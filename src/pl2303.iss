@@ -8,7 +8,7 @@
 #endif
 
 #ifndef AppName
-  #define AppName "Legacy Drivers"
+  #define AppName "PL2303 Legacy"
 #endif
 
 #define AppFileName = StringChange(AppName, " ", "-")

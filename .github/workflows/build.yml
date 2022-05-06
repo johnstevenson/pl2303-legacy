@@ -1,0 +1,34 @@
+name: Builds
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  build-and-run:
+    name: Build & run
+
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Compile PL2303-Legacy
+        run: iscc src\pl2303.iss
+        shell: cmd
+
+      - name: Run PL2303-Legacy
+        run: builds\output\PL2303-Legacy.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\install.txt
+        shell: cmd
+
+      - name: Upload run log
+        uses: actions/upload-artifact@v3
+        with:
+          name: run-log
+          path: C:\install.txt
