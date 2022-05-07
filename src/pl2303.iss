@@ -121,8 +121,6 @@ type
     SaveButton  : TNewButton;
   end;
 
-  TTask = function(ConfigRec: TConfigRec): Boolean;
-
 var
   GCmdExe: String;                  {full pathname to system cmd}
   GPnpExe: String;                  {full pathname to system pnputil}
@@ -140,7 +138,6 @@ var
 const
   LF = #13#10;
   LF2 = LF + LF;
-  TAB = #32#32#32#32#32#32;
 
   APP_NAME = '{#AppName}';
   ACTION_INSTALL = 1;
@@ -158,36 +155,27 @@ const
   UPDATE_ERROR = 100;
   UPDATE_UNRECOGNIZED = 200;
 
-{Config functions}
-function InitConfig(var Config: TConfigRec): Boolean; forward;
-procedure InitSetTheme; forward;
-procedure ItemizeConfig(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
-procedure UpdateConfig(var Config: TConfigRec); forward;
-
-{Exec functions}
-function ExecPnp(Params: String): Boolean; forward;
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
-function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
-function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
-function ExecSaveProgram(Path: String): Boolean; forward;
-function ExecUpdater(InfPath: String): Boolean; forward;
-
-{Update functions}
-function UpdateDrivers(Config: TConfigRec): Boolean; forward;
-procedure SetUpdateRec(Driver: TDriverRec; Status: Integer; SameDriver: Boolean); forward;
-
-{Driver functions}
+{Init functions}
+function ConfigInit(var Config: TConfigRec): Boolean; forward;
 function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec; forward;
+procedure ThemeInit; forward;
+
+{Config functions}
+procedure ConfigUpdate(var Config: TConfigRec); forward;
 function GetPLDrivers(var Device: TDeviceRec): TPLDrivers; forward;
 function GetPLInstance(PnpOutput: TArrayOfString): TArrayOfString; forward;
 function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers; forward;
-procedure InitDriverRec(var Rec: TDriverRec); forward;
+procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
+procedure SortDrivers(var Drivers: TPLDrivers); forward;
+
+{Driver update functions}
+procedure DriverUpdate(var Config: TConfigRec); forward;
+procedure DriverUpdateRun(Driver: TDriverRec; var Config: TConfigRec); forward;
 function InstallDriver(Driver: TDriverRec; var Config: TConfigRec): Boolean; forward;
 procedure RemoveLegacyDrivers(Config: TConfigRec); forward;
-procedure RunUpdate(Config: TConfigRec; Driver: TDriverRec); forward;
-procedure SortDrivers(var Drivers: TPLDrivers); forward;
-function TestMicrochip(Config: TConfigRec; Driver: TDriverRec; var TestDevice: TDeviceRec): Boolean; forward;
+procedure SetUpdateRec(Config: TConfigRec; Driver: TDriverRec; Status: Integer; SameDriver: Boolean); forward;
+function TestChip(Driver: TDriverRec; var Config: TConfigRec; var TestDevice: TDeviceRec): Boolean; forward;
 
 {Device functions}
 procedure DebugUnrecognizedDevice(Device: TDeviceRec); forward;
@@ -205,8 +193,17 @@ procedure DebugDriver(Message: String; Driver: TDriverRec); forward;
 procedure DebugPLDrivers(Drivers: TPLDrivers); forward;
 function FormatDriverDateAndVersion(Driver: TDriverRec; ForDisplay: Boolean): String; forward;
 function GetDriverDateAndVersion(Data: String; var DriverRec: TDriverRec): Boolean; forward;
+procedure InitDriverRec(var Rec: TDriverRec); forward;
 function IsDisplayedDriver(Driver1, Driver2: TDriverRec): Boolean; forward;
 function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean; forward;
+
+{Exec functions}
+function ExecPnp(Params: String): Boolean; forward;
+function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
+function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
+function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
+function ExecSaveProgram(Path: String): Boolean; forward;
+function ExecUpdater(InfPath: String): Boolean; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; Value: String); forward;
@@ -261,11 +258,11 @@ begin
   {Create export dir in temp directory}
   CreateDir(GExportDir);
 
-  {Set flags, must be before InitConfig}
+  {Set flags, must be before ConfigInit}
   StrToVersion(MIN_DRIVER, GFlags.MinDriver);
   GFlags.CIParam := NotEmpty(ExpandConstant('{param:CI}'));
 
-  Result := InitConfig(GConfig);
+  Result := ConfigInit(GConfig);
 
   if not Result then
   begin
@@ -281,7 +278,7 @@ var S: String;
 
 begin
 
-  InitSetTheme();
+  ThemeInit();
 
   S := 'For older devices that use unsupported Prolific microchips.';
   AddStr(S, ' If the current driver is not shown below, connect your device and click Scan Drivers.');
@@ -332,7 +329,7 @@ begin
   Result := True;
 
   if CurPageID = GPages.Start.ID then
-    Result := UpdateDrivers(GConfig);
+    DriverUpdate(GConfig);
 
 end;
 
@@ -346,9 +343,9 @@ begin
 end;
 
 
-{*************** Config functions ***************}
+{*************** Init functions ***************}
 
-function InitConfig(var Config: TConfigRec): Boolean;
+function ConfigInit(var Config: TConfigRec): Boolean;
 var
   Package: TDriverRec;
   DriverPath: String;
@@ -398,8 +395,32 @@ begin
 
 end;
 
+function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec;
+var
+  OriginalInf: String;
+  IniValue: String;
+
+begin
+
+  IniValue := '';
+  OriginalInf := DriverPath + '\' + Folder + '\' + DRIVER_INF;
+  Exists := FileExists(OriginalInf);
+  Error := False;
+
+  if Exists then
+  begin
+    IniValue := GetIniString('version', 'DriverVer', '', OriginalInf);
+    Result.OriginalInf := OriginalInf;
+  end;
+
+  if not GetDriverDateAndVersion(IniValue, Result) then
+    Error := Exists;
+
+end;
+
+
 {Sets the font color to dark grey}
-procedure InitSetTheme();
+procedure ThemeInit();
 var
   Color: Integer;
 
@@ -411,60 +432,10 @@ begin
 
 end;
 
-procedure ItemizeConfig(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec);
-var
-  TmpDrivers: TPLDrivers;
-  I: Integer;
-  Driver: TDriverRec;
 
-begin
+{*************** Config functions ***************}
 
-  for I := 0 to Drivers.Count - 1 do
-  begin
-    Driver := Drivers.Items[I];
-    Driver.DisplayName := 'Prolific';
-
-    if IsSameVersion(Config.Device.Driver, Driver) then
-    begin
-      if not Matched then
-      begin
-        Matched := True;
-        AddStr(Driver.DisplayName, ' (current driver)');
-
-        {Add to main drivers}
-        AddToDriverList(Driver, Config.Drivers);
-
-        Continue;
-      end;
-    end;
-
-    {Add installed legacy drivers to LegacyStore}
-    if IsSameVersion(Config.Packages[0], Driver) then
-    begin
-      AddToDriverList(Driver, Config.LegacyStore);
-      Continue;
-    end;
-
-    if IsSameVersion(Config.Packages[1], Driver) then
-    begin
-      AddToDriverList(Driver, Config.LegacyStore);
-      Continue;
-    end;
-
-    {Add to tmp drivers if not a legacy driver}
-    AddToDriverList(Driver, TmpDrivers);
-
-  end;
-
-  SortDrivers(TmpDrivers);
-
-  {Add sorted tmp drivers to main drivers}
-  for I := 0 to TmpDrivers.Count - 1 do
-    AddToDriverList(TmpDrivers.Items[I], Config.Drivers);
-
-end;
-
-procedure UpdateConfig(var Config: TConfigRec);
+procedure ConfigUpdate(var Config: TConfigRec);
 var
   Device: TDeviceRec;
   Drivers: TPLDrivers;
@@ -504,218 +475,7 @@ begin
   AddToDriverList(Driver, Config.Drivers);
 
   {Add sorted drivers and legacy store}
-  ItemizeConfig(Drivers, Matched, Config);
-
-end;
-
-
-{*************** Exec functions ***************}
-
-function ExecPnp(Params: String): Boolean;
-var
-  ExitCode: Integer;
-
-begin
-
-  DebugExecBegin(GPnpExe, Params);
-  Result := Exec(GPnpExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-end;
-
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean;
-var
-  Params: String;
-
-begin
-
-  Params := Format('/delete-driver %s', [ArgWin(Driver.OemInf)]);
-  Result := ExecPnp(Params);
-
-end;
-
-function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean;
-var
-  Params: String;
-
-begin
-
-  Result := False;
-  OriginalInf := '';
-
-  DebugDriver('Exporting driver for installation', Driver);
-
-  if not DelTree(GExportDir + '\*', False, True, True) then
-  begin
-    Debug(Format('Failed to clear export directory: %s', [GExportDir]));
-    Exit;
-  end;
-
-  Params := Format('/export-driver %s %s', [ArgWin(Driver.OemInf), ArgWin(GExportDir)]);
-
-  if not ExecPnp(Params) then
-    Exit;
-
-  OriginalInf := GExportDir + '\' + Driver.OriginalInf;
-  Result := True;
-
-end;
-
-function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean;
-var
-  PnpParams: String;
-  Params: String;
-  ExitCode: Integer;
-
-begin
-
-  SetArrayLength(Output, 0);
-  DeleteFile(GStdOut);
-
-  AddParam(PnpParams, '/enum-devices');
-  AddParam(PnpParams, '/class');
-  AddParam(PnpParams, PORTSCLASS);
-  AddParam(PnpParams, '/drivers');
-  AddParam(PnpParams, '/connected');
-
-  Params := Format('/c "%s %s >%s"', [ArgCmdModule(GPnpExe), PnpParams, ArgCmd(GStdOut)]);
-
-  DebugExecBegin(GCmdExe, Params);
-  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-  if Result then
-    LoadStringsFromFile(GStdOut, Output);
-
-end;
-
-function ExecSaveProgram(Path: String): Boolean;
-var
-  Setup: String;
-  Params: String;
-  ExitCode: Integer;
-
-begin
-
-  Setup := ExpandConstant('{srcexe}');
-  Params := Format('/c "copy %s %s"', [ArgCmd(Setup), ArgCmd(Path)]);
-
-  DebugExecBegin(GCmdExe, Params);
-  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-end;
-
-function ExecUpdater(InfPath: String): Boolean;
-var
-  Params: String;
-  ExitCode: Integer;
-
-begin
-
-  Params := ArgWin(InfPath);
-
-  DebugExecBegin(GUpdaterExe, Params);
-  Result := Exec(GUpdaterExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-end;
-
-
-{*************** Update functions ***************}
-
-function UpdateDrivers(Config: TConfigRec): Boolean;
-var
-  Index: Integer;
-  Driver: TDriverRec;
-
-begin
-
-  Result := True;
-
-  {See if we have a driver selected}
-  Index := GStartPage.Drivers.ItemIndex;
-
-  if Index <> -1 then
-    Driver := Config.Drivers.Items[Index];
-
-  GFlags.LastDriver := Driver;
-
-  {Note that we cannot use NoDevice here because the user may
-  have connected and not scanned, or Windows may have found
-  and installed the latest driver}
-  if not Driver.Exists and not GFlags.CIParam then
-  begin
-    {Skip update if not CI}
-    Debug('Skipping update, driver not selected');
-    SetUpdateRec(Driver, UPDATE_ERROR, False);
-    Exit;
-  end;
-
-  GPages.Progress.Tag := WizardForm.CurPageID;
-  ProgressPageShow(Driver);
-
-  try
-    RunUpdate(Config, Driver);
-    GPages.Progress.SetProgress(1000, 1000);
-  finally
-    GPages.Progress.Hide();
-  end;
-
-end;
-
-procedure SetUpdateRec(Driver: TDriverRec; Status: Integer; SameDriver: Boolean);
-begin
-
-  GUpdate.Driver := Driver;
-  GUpdate.Status := Status;
-
-  if Status <> UPDATE_SUCCESS then
-  begin
-    if Driver.Exists then
-      GUpdate.Message := 'Error: Unable to install the selected driver.'
-    else
-      GUpdate.Message := 'Error: No driver available.';
-  end
-  else
-  begin
-
-    if SameDriver then
-      GUpdate.Message := 'Nothing to install'
-    else
-      GUpdate.Message := 'Success: The selected driver has been installed.';
-
-  end;
-
-end;
-
-
-{*************** Driver functions ***************}
-
-function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec;
-var
-  OriginalInf: String;
-  IniValue: String;
-
-begin
-
-  IniValue := '';
-  OriginalInf := DriverPath + '\' + Folder + '\' + DRIVER_INF;
-  Exists := FileExists(OriginalInf);
-  Error := False;
-
-  if Exists then
-  begin
-    IniValue := GetIniString('version', 'DriverVer', '', OriginalInf);
-    Result.OriginalInf := OriginalInf;
-  end;
-
-  if not GetDriverDateAndVersion(IniValue, Result) then
-    Error := Exists;
+  ItemizeDrivers(Drivers, Matched, Config);
 
 end;
 
@@ -913,16 +673,182 @@ begin
 
 end;
 
-procedure InitDriverRec(var Rec: TDriverRec);
+procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec);
+var
+  TmpDrivers: TPLDrivers;
+  I: Integer;
+  Driver: TDriverRec;
+
 begin
 
-  Rec.OemInf := '';
-  Rec.OriginalInf := '';
-  Rec.Version := '';
-  Rec.PackedVersion := 0;
-  Rec.Date := '';
-  Rec.DisplayName := '';
-  Rec.Exists := True;
+  for I := 0 to Drivers.Count - 1 do
+  begin
+    Driver := Drivers.Items[I];
+    Driver.DisplayName := 'Prolific';
+
+    if IsSameVersion(Config.Device.Driver, Driver) then
+    begin
+      if not Matched then
+      begin
+        Matched := True;
+        AddStr(Driver.DisplayName, ' (current driver)');
+
+        {Add to main drivers}
+        AddToDriverList(Driver, Config.Drivers);
+
+        Continue;
+      end;
+    end;
+
+    {Add installed legacy drivers to LegacyStore}
+    if IsSameVersion(Config.Packages[0], Driver) then
+    begin
+      AddToDriverList(Driver, Config.LegacyStore);
+      Continue;
+    end;
+
+    if IsSameVersion(Config.Packages[1], Driver) then
+    begin
+      AddToDriverList(Driver, Config.LegacyStore);
+      Continue;
+    end;
+
+    {Add to tmp drivers if not a legacy driver}
+    AddToDriverList(Driver, TmpDrivers);
+
+  end;
+
+  SortDrivers(TmpDrivers);
+
+  {Add sorted tmp drivers to main drivers}
+  for I := 0 to TmpDrivers.Count - 1 do
+    AddToDriverList(TmpDrivers.Items[I], Config.Drivers);
+
+end;
+
+
+procedure SortDrivers(var Drivers: TPLDrivers);
+var
+  Tmp: TDriverRec;
+  Changed: Boolean;
+  I: Integer;
+
+begin
+
+  Changed := True;
+
+  while Changed do
+  begin
+    Changed := False;
+
+    for I := 0 to Drivers.Count - 2 do
+    begin
+
+      if (CompareVersion(Drivers.Items[I], Drivers.Items[I + 1]) > 0) then
+      begin
+        Tmp := Drivers.Items[I + 1];
+        Drivers.Items[I + 1] := Drivers.Items[I];
+        Drivers.Items[I] := Tmp;
+        Changed := True;
+      end;
+
+    end;
+  end;
+
+end;
+
+
+{*************** Driver update functions ***************}
+
+procedure DriverUpdate(var Config: TConfigRec);
+var
+  Index: Integer;
+  Driver: TDriverRec;
+
+begin
+
+  {See if we have a driver selected}
+  Index := GStartPage.Drivers.ItemIndex;
+
+  if Index <> -1 then
+    Driver := Config.Drivers.Items[Index];
+
+  GFlags.LastDriver := Driver;
+
+  {Note that we cannot use NoDevice here because the user may
+  have connected and not scanned, or Windows may have found
+  and installed the latest driver}
+  if not Driver.Exists then
+  begin
+
+    {Skip update if not CI}
+    if GFlags.CIParam then
+      Debug('Driver not selected, using empty driver')
+    else
+    begin
+      Debug('Skipping update, driver not selected');
+      SetUpdateRec(Config, Driver, UPDATE_ERROR, False);
+      Exit;
+    end;
+
+  end;
+
+  GPages.Progress.Tag := WizardForm.CurPageID;
+  ProgressPageShow(Driver);
+
+  try
+    DriverUpdateRun(Driver, Config);
+    GPages.Progress.SetProgress(1000, 1000);
+  finally
+    GPages.Progress.Hide();
+  end;
+
+end;
+
+procedure DriverUpdateRun(Driver: TDriverRec; var Config: TConfigRec);
+var
+  SameDriver: Boolean;
+  TestDevice: TDeviceRec;
+
+begin
+
+  SameDriver := IsSameVersion(Driver, Config.Device.Driver);
+
+  if not TestChip(Driver, Config, TestDevice) then
+  begin
+    SetUpdateRec(Config, Driver, UPDATE_ERROR, SameDriver);
+    Exit;
+  end;
+
+  if not TestDevice.Recognized then
+  begin
+    {Config will have been updated}
+    DebugUnrecognizedDevice(TestDevice);
+    SetUpdateRec(Config, Driver, UPDATE_UNRECOGNIZED, SameDriver);
+    Exit;
+  end;
+
+  if not SameDriver then
+  begin
+
+    {Install driver and update config}
+    if not InstallDriver(Driver, Config) then
+    begin
+      SetUpdateRec(Config, Driver, UPDATE_ERROR, SameDriver);
+      Exit;
+    end;
+
+    if not Config.Device.Recognized then
+    begin
+      DebugUnrecognizedDevice(Config.Device);
+      SetUpdateRec(Config, Driver, UPDATE_UNRECOGNIZED, SameDriver);
+      Exit;
+    end;
+
+  end;
+
+  RemoveLegacyDrivers(Config);
+  SetUpdateRec(Config, Driver, UPDATE_SUCCESS, SameDriver);
 
 end;
 
@@ -951,7 +877,7 @@ begin
     Exit;
   end;
 
-  UpdateConfig(Config);
+  ConfigUpdate(Config);
 
   if not IsSameVersion(Driver, Config.Device.Driver) then
     DebugDriver('Failed to install driver', Driver)
@@ -988,84 +914,41 @@ begin
 
 end;
 
-procedure SortDrivers(var Drivers: TPLDrivers);
-var
-  Tmp: TDriverRec;
-  Changed: Boolean;
-  I: Integer;
-
+procedure SetUpdateRec(Config: TConfigRec; Driver: TDriverRec; Status: Integer; SameDriver: Boolean);
 begin
 
-  Changed := True;
+  GUpdate.Driver := Driver;
+  GUpdate.Status := Status;
 
-  while Changed do
+  if Status <> UPDATE_SUCCESS then
   begin
-    Changed := False;
 
-    for I := 0 to Drivers.Count - 2 do
+    if NoDevice(Config) then
+      GUpdate.Message := 'Error: Not connected.'
+    else
     begin
 
-      if (CompareVersion(Drivers.Items[I], Drivers.Items[I + 1]) > 0) then
-      begin
-        Tmp := Drivers.Items[I + 1];
-        Drivers.Items[I + 1] := Drivers.Items[I];
-        Drivers.Items[I] := Tmp;
-        Changed := True;
-      end;
+      if Driver.Exists then
+        GUpdate.Message := 'Error: Unable to install the selected driver.'
+      else
+        GUpdate.Message := 'Error: No driver selected.';
 
     end;
+
+  end
+  else
+  begin
+
+    if SameDriver then
+      GUpdate.Message := 'Nothing to install'
+    else
+      GUpdate.Message := 'Success: The selected driver has been installed.';
+
   end;
 
 end;
 
-procedure RunUpdate(Config: TConfigRec; Driver: TDriverRec);
-var
-  SameDriver: Boolean;
-  TestDevice: TDeviceRec;
-
-begin
-
-  SameDriver := IsSameVersion(Driver, Config.Device.Driver);
-
-  if not TestMicrochip(Config, Driver, TestDevice) then
-  begin
-    SetUpdateRec(Driver, UPDATE_ERROR, SameDriver);
-    Exit;
-  end;
-
-  if not TestDevice.Recognized then
-  begin
-    DebugUnrecognizedDevice(TestDevice);
-    SetUpdateRec(Driver, UPDATE_UNRECOGNIZED, SameDriver);
-    Exit;
-  end;
-
-  if not SameDriver then
-  begin
-
-    {Install driver and update global config}
-    if not InstallDriver(Driver, GConfig) then
-    begin
-      SetUpdateRec(Driver, UPDATE_ERROR, SameDriver);
-      Exit;
-    end
-
-  end;
-
-  {Catch-all check}
-  if not GConfig.Device.Recognized then
-  begin
-    DebugUnrecognizedDevice(TestDevice);
-    SetUpdateRec(Driver, UPDATE_UNRECOGNIZED, SameDriver);
-    Exit;
-  end;
-
-  RemoveLegacyDrivers(GConfig);
-  SetUpdateRec(Driver, UPDATE_SUCCESS, SameDriver);
-
-end;
-
-function TestMicrochip(Config: TConfigRec; Driver: TDriverRec; var TestDevice: TDeviceRec): Boolean;
+function TestChip(Driver: TDriverRec; var Config: TConfigRec; var TestDevice: TDeviceRec): Boolean;
 var
   CurrentDriver: TDriverRec;
   TestConfig: TConfigRec;
@@ -1118,7 +1001,7 @@ begin
 
   end;
 
-  {Note that if we have an empty driver, installation  will fail}
+  {Note that if we have an empty driver, installation will fail}
   if not InstallDriver(TestDriver, TestConfig) then
   begin
     Result := False;
@@ -1127,11 +1010,11 @@ begin
 
   TestDevice := TestConfig.Device;
 
-  {If not recognized set global config to the test config results
-  so this is shown on the finish page}
+  {If not recognized set config to the test config results
+  so that this is shown on the finish page}
   if not TestDevice.Recognized then
   begin
-    GConfig := TestConfig;
+    Config := TestConfig;
     Exit;
   end;
 
@@ -1140,8 +1023,7 @@ begin
   if IsSameVersion(Driver, CurrentDriver) then
   begin
 
-    {Install driver and update global config}
-    if not InstallDriver(CurrentDriver, GConfig) then
+    if not InstallDriver(CurrentDriver, TestConfig) then
     begin
       Result := False;
       Exit;
@@ -1418,6 +1300,19 @@ begin
 
 end;
 
+procedure InitDriverRec(var Rec: TDriverRec);
+begin
+
+  Rec.OemInf := '';
+  Rec.OriginalInf := '';
+  Rec.Version := '';
+  Rec.PackedVersion := 0;
+  Rec.Date := '';
+  Rec.DisplayName := '';
+  Rec.Exists := True;
+
+end;
+
 function IsDisplayedDriver(Driver1, Driver2: TDriverRec): Boolean;
 begin
 
@@ -1442,6 +1337,123 @@ begin
   end;
 
   Result := SamePackedVersion(Driver1.PackedVersion, Driver2.PackedVersion);
+
+end;
+
+
+{*************** Exec functions ***************}
+
+function ExecPnp(Params: String): Boolean;
+var
+  ExitCode: Integer;
+
+begin
+
+  DebugExecBegin(GPnpExe, Params);
+  Result := Exec(GPnpExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecEnd(Result, ExitCode);
+  Result := Result and (ExitCode = 0);
+
+end;
+
+function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean;
+var
+  Params: String;
+
+begin
+
+  Params := Format('/delete-driver %s', [ArgWin(Driver.OemInf)]);
+  Result := ExecPnp(Params);
+
+end;
+
+function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean;
+var
+  Params: String;
+
+begin
+
+  Result := False;
+  OriginalInf := '';
+
+  DebugDriver('Exporting driver for installation', Driver);
+
+  if not DelTree(GExportDir + '\*', False, True, True) then
+  begin
+    Debug(Format('Failed to clear export directory: %s', [GExportDir]));
+    Exit;
+  end;
+
+  Params := Format('/export-driver %s %s', [ArgWin(Driver.OemInf), ArgWin(GExportDir)]);
+
+  if not ExecPnp(Params) then
+    Exit;
+
+  OriginalInf := GExportDir + '\' + Driver.OriginalInf;
+  Result := True;
+
+end;
+
+function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean;
+var
+  PnpParams: String;
+  Params: String;
+  ExitCode: Integer;
+
+begin
+
+  SetArrayLength(Output, 0);
+  DeleteFile(GStdOut);
+
+  AddParam(PnpParams, '/enum-devices');
+  AddParam(PnpParams, '/class');
+  AddParam(PnpParams, PORTSCLASS);
+  AddParam(PnpParams, '/drivers');
+  AddParam(PnpParams, '/connected');
+
+  Params := Format('/c "%s %s >%s"', [ArgCmdModule(GPnpExe), PnpParams, ArgCmd(GStdOut)]);
+
+  DebugExecBegin(GCmdExe, Params);
+  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecEnd(Result, ExitCode);
+  Result := Result and (ExitCode = 0);
+
+  if Result then
+    LoadStringsFromFile(GStdOut, Output);
+
+end;
+
+function ExecSaveProgram(Path: String): Boolean;
+var
+  Setup: String;
+  Params: String;
+  ExitCode: Integer;
+
+begin
+
+  Setup := ExpandConstant('{srcexe}');
+  Params := Format('/c "copy %s %s"', [ArgCmd(Setup), ArgCmd(Path)]);
+
+  DebugExecBegin(GCmdExe, Params);
+  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecEnd(Result, ExitCode);
+  Result := Result and (ExitCode = 0);
+
+end;
+
+function ExecUpdater(InfPath: String): Boolean;
+var
+  Params: String;
+  ExitCode: Integer;
+
+begin
+
+  Params := ArgWin(InfPath);
+
+  DebugExecBegin(GUpdaterExe, Params);
+  Result := Exec(GUpdaterExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecEnd(Result, ExitCode);
+  Result := Result and (ExitCode = 0);
 
 end;
 
@@ -1767,7 +1779,7 @@ begin
     begin
       Header := 'Important information';
 
-      S := 'It is recommended that you save this program. You will need it again when';
+      S := 'It is recommended that you save this program. You will need it again if';
       AddStr(S, ' Windows Update changes your driver, or if you use different devices.');
     end;
   end
@@ -1903,7 +1915,7 @@ end;
 
 procedure StartPageScanUpdate;
 begin
-  UpdateConfig(GConfig);
+  ConfigUpdate(GConfig);
   StartPageUpdate(GConfig);
 end;
 
