@@ -67,7 +67,7 @@ type
     PackedVersion : Int64;
     Date          : String;
     DisplayName   : String;
-    Compatible    : Boolean;
+    Exists        : Boolean;
   end;
 
   TLegacyDrivers = Array[0..1] of TDriverRec;
@@ -92,6 +92,7 @@ type
   end;
 
   TUpdateRec = record
+    Driver      : TDriverRec;
     Status      : Integer;
     Message     : String;
   end;
@@ -100,7 +101,6 @@ type
     MinDriver   : Int64;
     CIParam     : Boolean;
     LastDriver  : TDriverRec;
-    SaveDir     : String;
   end;
 
   TCustomPages = record
@@ -174,7 +174,7 @@ function ExecUpdater(InfPath: String): Boolean; forward;
 
 {Update functions}
 function UpdateDrivers(Config: TConfigRec): Boolean; forward;
-procedure SetUpdateRec(Status: Integer; SameDriver: Boolean; var Rec: TUpdateRec); forward;
+procedure SetUpdateRec(Driver: TDriverRec; Status: Integer; SameDriver: Boolean); forward;
 
 {Driver functions}
 function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec; forward;
@@ -362,6 +362,7 @@ begin
 
   {Legacy HXA}
   Package := GetLegacyPackage(DriverPath, LEGACY_HXA, Exists, Error);
+  DebugDriver('Registering legacy HXA package', Package);
 
   if Error then
   begin
@@ -370,11 +371,12 @@ begin
   end;
 
   Package.DisplayName := 'Legacy HXA';
-  Package.Compatible := Exists;
+  Package.Exists := Exists;
   Config.Packages[0] := Package;
 
   {Legacy TA/TB}
   Package := GetLegacyPackage(DriverPath, LEGACY_TAB, Exists, Error);
+  DebugDriver('Registering legacy TA/TB package', Package);
 
   if Error then
   begin
@@ -383,8 +385,14 @@ begin
   end;
 
   Package.DisplayName := 'Legacy TA/TB';
-  Package.Compatible := Exists;
+  Package.Exists := Exists;
   Config.Packages[1] := Package;
+
+  if Config.Packages[0].Exists <> Config.Packages[1].Exists then
+  begin
+    Debug('Legacy packages misconfiguration');
+    Exit;
+  end;
 
   Result := True;
 
@@ -439,13 +447,8 @@ begin
 
     if IsSameVersion(Config.Packages[1], Driver) then
     begin
-      {Add this driver on Windows 11. On Windows 10 it
-      will be shown as an option to use}
-      if Config.Packages[1].Compatible then
-      begin
-        AddToDriverList(Driver, Config.LegacyStore);
-        Continue;
-      end;
+      AddToDriverList(Driver, Config.LegacyStore);
+      Continue;
     end;
 
     {Add to tmp drivers if not a legacy driver}
@@ -629,35 +632,29 @@ function UpdateDrivers(Config: TConfigRec): Boolean;
 var
   Index: Integer;
   Driver: TDriverRec;
-  Msg: String;
 
 begin
 
-  Result := False;
+  Result := True;
 
-  {Ensure we have a device}
-  if NoDevice(Config) and not GFlags.CIParam then
-  begin
-    Msg := 'Device not connected.';
-    AddPara(Msg, 'Please connect your device and click Scan Drivers, or click Cancel to exit the program.');
-    ShowErrorMessage(Msg);
-    Exit;
-  end;
-
-  {Ensure we have a driver selected}
+  {See if we have a driver selected}
   Index := GStartPage.Drivers.ItemIndex;
 
-  if (Index = -1) or not GStartPage.Drivers.Checked[Index] then
+  if Index <> -1 then
+    Driver := Config.Drivers.Items[Index];
+
+  GFlags.LastDriver := Driver;
+
+  {Note that we cannot use NoDevice here because the user may
+  have connected and not scanned, or Windows may have found
+  and installed the latest driver}
+  if not Driver.Exists and not GFlags.CIParam then
   begin
-    Msg := 'No driver is selected.';
-    AddPara(Msg, 'Please select a driver, or click Cancel to exit the program.');
-    ShowErrorMessage(Msg);
+    {Skip update if not CI}
+    Debug('Skipping update, driver not selected');
+    SetUpdateRec(Driver, UPDATE_ERROR, False);
     Exit;
   end;
-
-  Result := True;
-  Driver := Config.Drivers.Items[Index];
-  GFlags.LastDriver := Driver;
 
   GPages.Progress.Tag := WizardForm.CurPageID;
   ProgressPageShow(Driver);
@@ -671,20 +668,26 @@ begin
 
 end;
 
-procedure SetUpdateRec(Status: Integer; SameDriver: Boolean; var Rec: TUpdateRec);
+procedure SetUpdateRec(Driver: TDriverRec; Status: Integer; SameDriver: Boolean);
 begin
 
-  Rec.Status := Status;
+  GUpdate.Driver := Driver;
+  GUpdate.Status := Status;
 
   if Status <> UPDATE_SUCCESS then
-    Rec.Message := 'Error: Unable to install the selected driver.'
+  begin
+    if Driver.Exists then
+      GUpdate.Message := 'Error: Unable to install the selected driver.'
+    else
+      GUpdate.Message := 'Error: No driver available.';
+  end
   else
   begin
 
     if SameDriver then
-      Rec.Message := 'Nothing to install'
+      GUpdate.Message := 'Nothing to install'
     else
-      Rec.Message := 'Success: The selected driver has been installed.';
+      GUpdate.Message := 'Success: The selected driver has been installed.';
 
   end;
 
@@ -865,6 +868,7 @@ var
 begin
 
   Count := GetArrayLength(Drivers);
+  DriverRec.Exists := True;
   ExpectedKey := 'Driver Name';
 
   for I := 0 to Count - 1 do
@@ -918,7 +922,7 @@ begin
   Rec.PackedVersion := 0;
   Rec.Date := '';
   Rec.DisplayName := '';
-  Rec.Compatible := True;
+  Rec.Exists := True;
 
 end;
 
@@ -1025,14 +1029,14 @@ begin
 
   if not TestMicrochip(Config, Driver, TestDevice) then
   begin
-    SetUpdateRec(UPDATE_ERROR, SameDriver, GUpdate);
+    SetUpdateRec(Driver, UPDATE_ERROR, SameDriver);
     Exit;
   end;
 
   if not TestDevice.Recognized then
   begin
     DebugUnrecognizedDevice(TestDevice);
-    SetUpdateRec(UPDATE_UNRECOGNIZED, SameDriver, GUpdate);
+    SetUpdateRec(Driver, UPDATE_UNRECOGNIZED, SameDriver);
     Exit;
   end;
 
@@ -1042,7 +1046,7 @@ begin
     {Install driver and update global config}
     if not InstallDriver(Driver, GConfig) then
     begin
-      SetUpdateRec(UPDATE_ERROR, SameDriver, GUpdate);
+      SetUpdateRec(Driver, UPDATE_ERROR, SameDriver);
       Exit;
     end
 
@@ -1052,12 +1056,12 @@ begin
   if not GConfig.Device.Recognized then
   begin
     DebugUnrecognizedDevice(TestDevice);
-    SetUpdateRec(UPDATE_UNRECOGNIZED, SameDriver, GUpdate);
+    SetUpdateRec(Driver, UPDATE_UNRECOGNIZED, SameDriver);
     Exit;
   end;
 
   RemoveLegacyDrivers(GConfig);
-  SetUpdateRec(UPDATE_SUCCESS, SameDriver, GUpdate);
+  SetUpdateRec(Driver, UPDATE_SUCCESS, SameDriver);
 
 end;
 
@@ -1424,7 +1428,7 @@ begin
 
   Result := (Driver1.OemInf = Driver2.OemInf)
     and (Driver1.OriginalInf = Driver2.OriginalInf)
-    and (Driver1.Compatible = Driver2.Compatible);
+    and (Driver1.Exists = Driver2.Exists);
 
 end;
 
@@ -1660,7 +1664,7 @@ begin
   with GFinishPage.InfoHeader do
   begin
     Parent := Result.Surface;
-    Top := Base + ScaleY(36);
+    Top := Base + ScaleY(26);
     Width := Result.SurfaceWidth;
     Anchors := [akLeft, akTop, akRight];
     AutoSize := True;
@@ -1717,14 +1721,38 @@ begin
 
         if NoDevice(Config) then
         begin
-          S := 'Your device must be connected to update the selected driver.';
-          AddStr(S, ' Please connect your device, then click Back to retry.')
+
+          if not Update.Driver.Exists then
+            {Either no drivers packaged or no driver selected}
+            S := 'A device must be connected to find any PL2303 drivers.'
+          else
+            S := 'A device must be connected to update the selected driver.';
+
+          AddStr(S, ' Please connect your device, then click Back to retry.');
+
         end
         else
         begin
-          S := 'Please check that your device is connected, then click Back to retry.';
-          AddStr(S, ' If this fails, you may need to restart');
-          AddStr(S, ' your computer and run this update program again.');
+
+          if not Update.Driver.Exists then
+          begin
+            {Either no drivers packaged or no driver selected}
+
+            if Config.Packages[0].Exists then
+              S := 'Please click Back and select a driver.'
+            else
+            begin
+              S := 'Please reconnect your device, then click Back to retry. If this fails,';
+              AddStr(S, ' use Windows Device Manager to find a PL2303 driver.');
+            end;
+
+          end
+          else
+          begin
+            S := 'Please reconnect your device, then click Back to retry. If this fails,';
+            AddStr(S, ' you may need to restart your computer and run this program again.');
+          end;
+
         end;
       end;
 
@@ -1739,9 +1767,8 @@ begin
     begin
       Header := 'Important information';
 
-      S := 'It is recommended that you save this updater program.';
-      AddStr(S, ' You will need it again when Windows Update changes your driver');
-      AddStr(S, ' or if you use different devices.');
+      S := 'It is recommended that you save this program. You will need it again when';
+      AddStr(S, ' Windows Update changes your driver, or if you use different devices.');
     end;
   end
 
@@ -1770,7 +1797,7 @@ begin
 
   FilePath := ExpandConstant('{srcexe}');
   FileName := ExtractFilename(FilePath);
-  Prompt := Format('Choose where to save updater program:%s%s', [LF, FileName]);
+  Prompt := Format('Choose where to save %s%s', [LF, FileName]);
 
   if not BrowseForFolder(Prompt, Directory, True) then
     Exit;
@@ -1863,7 +1890,7 @@ begin
     Anchors := [akLeft, akBottom, akRight];
     AutoSize := True;
     { could be any of genuine, authentic, legitimate, recognized, official ...}
-    Caption := 'This updater program will only work with authentic Prolific microchips.';
+    Caption := 'This program will only work with authentic Prolific microchips.';
   end;
 
 end;
@@ -1910,18 +1937,14 @@ begin
     case Index of
       0:
       begin
-        if GFlags.CIParam then
-          Checked := True
-        else
-          Checked := Checked or DeviceError(Config.Device, 'PL2303HXA');
-
-        Enabled := Driver.Compatible or GFlags.CIParam;
+        Checked := Checked or DeviceError(Config.Device, 'PL2303HXA');
+        Enabled := Driver.Exists;
       end;
 
       1:
       begin
         Checked := Checked or DeviceError(Config.Device, 'PL2303TA/PL2303TB');
-        Enabled := Driver.Compatible or GFlags.CIParam;
+        Enabled := Driver.Exists;
       end;
 
     else
