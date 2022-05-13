@@ -11,7 +11,7 @@
   #define AppName "PL2303 Legacy"
 #endif
 
-#define AppFileName = StringChange(AppName, " ", "-")
+#define AppFileName = StringChange(AppName, " ", "")
 #define UpdaterExe "updater.exe"
 
 [Setup]
@@ -44,7 +44,7 @@ WizardSizePercent=110,100
   #include "build.iss";
 #else
   OutputDir=..\builds\output
-  OutputBaseFilename={#AppFileName}.dev
+  OutputBaseFilename={#AppFileName}-dev
 #endif
 
 [LangOptions]
@@ -54,8 +54,8 @@ DialogFontSize=10
 Source: updater\bin\Release\{#UpdaterExe}; Flags: dontcopy;
 
 [Messages]
-SetupAppTitle={#AppName}
-SetupWindowTitle={#AppName}
+SetupAppTitle={#AppName} {#SetupVersion}
+SetupWindowTitle={#AppName} {#SetupVersion}
 FinishedHeadingLabel=[name] has completed
 FinishedLabelNoIcons=Run this progam again if your driver has changed.
 ClickFinish=Click Finish to exit.

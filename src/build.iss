@@ -2,7 +2,7 @@
 
 ; release defines
 #define private OutputDir "..\builds\release"
-#define private OutputBaseFilename AppFileName + "." + SetupVersion
+#define private OutputBaseFilename AppFileName + "-" + SetupVersion
 
 ; release guard
 #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
