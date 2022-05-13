@@ -29,7 +29,6 @@ MinVersion=10.0.18362
 DisableWelcomePage=yes
 DisableDirPage=yes
 DisableReadyPage=yes
-DisableFinishedPage=yes
 DisableProgramGroupPage=yes
 CreateAppDir=no
 
@@ -57,6 +56,9 @@ Source: updater\bin\Release\{#UpdaterExe}; Flags: dontcopy;
 [Messages]
 SetupAppTitle={#AppName}
 SetupWindowTitle={#AppName}
+FinishedHeadingLabel=[name] has completed
+FinishedLabelNoIcons=Run this progam again if your driver has changed.
+ClickFinish=Click Finish to exit.
 
 [Code]
 type
@@ -286,7 +288,7 @@ begin
   GPages.Start := StartPageCreate(wpWelcome, 'PL2303 legacy USB-to-Serial drivers', S);
 
   GPages.Finish := FinishPageCreate(GPages.Start.ID,
-    'Completed driver update', '');
+    'Driver update result', '');
 
   GPages.Progress := CreateOutputProgressPage('', '');
 
@@ -307,7 +309,7 @@ begin
   end
   else if CurPageID = GPages.Finish.ID then
     FinishPageUpdate(GConfig, GUpdate);
-
+  {
   if CurPageID = GPages.Finish.ID then
   begin
     WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish);
@@ -318,7 +320,7 @@ begin
     WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
     WizardForm.CancelButton.Visible := True;
   end;
-
+  }
   DebugPageName(CurPageID);
 
 end;
@@ -940,7 +942,7 @@ begin
   begin
 
     if SameDriver then
-      GUpdate.Message := 'Nothing to install'
+      GUpdate.Message := 'Success: Driver already installed.'
     else
       GUpdate.Message := 'Success: The selected driver has been installed.';
 
@@ -1678,7 +1680,7 @@ begin
     Parent := Result.Surface;
     Top := Base + ScaleY(26);
     Width := Result.SurfaceWidth;
-    Anchors := [akLeft, akTop, akRight];
+    Anchors := [akLeft, akTop];
     AutoSize := True;
     Caption := 'Important information';
     Font.Style := [fsBold];
@@ -1693,6 +1695,7 @@ begin
     Parent := Result.Surface;
     Top := Base + ScaleY(5);
     Width := Result.SurfaceWidth;
+    Anchors := [akLeft, akTop, akRight];
     AutoSize := True;
     WordWrap := True;
     Caption := '';
@@ -1716,6 +1719,7 @@ end;
 procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec);
 var
   S: String;
+  DriverError: Boolean;
   Header: String;
   Base: Integer;
 
@@ -1723,6 +1727,7 @@ begin
 
   WizardForm.ActiveControl := Nil;
   GPages.Finish.Description := Update.Message;
+  DriverError := False;
 
   SetCurrentDriver(GPages.Finish, Config);
 
@@ -1777,17 +1782,28 @@ begin
       end;
   else
     begin
-      Header := 'Important information';
+      Header := 'Information';
 
-      S := 'It is recommended that you save this program. You will need it again if';
-      AddStr(S, ' Windows Update changes your driver, or if you use different devices.');
+      DriverError := NotEmpty(Config.Device.ErrorMsg);
+
+      if DriverError then
+      begin
+        S := 'The installed driver may not be the correct one for your device.';
+        AddStr(S, ' Click Back to retry with a different driver.');
+      end
+      else
+      begin
+        S := 'It is recommended that you save this program on your computer. You will need it';
+        AddStr(S, ' again if Windows Update changes your driver, or if you use different devices.');
+      end;
+
     end;
-  end
+  end;
 
+  DriverError := DriverError or (Update.Status <> UPDATE_SUCCESS);
   GFinishPage.InfoHeader.Caption := Header;
   GFinishPage.Info.Caption := S;
-  GFinishPage.Info.Width := GPages.Finish.SurfaceWidth;
-  GFinishPage.SaveButton.Visible := Update.Status = UPDATE_SUCCESS;
+  GFinishPage.SaveButton.Visible := not DriverError;
 
   if GFinishPage.SaveButton.Visible then
   begin
@@ -1870,7 +1886,7 @@ begin
     Parent := Result.Surface;
     Top := Base + ScaleY(12);
     Width := Result.SurfaceWidth;
-    Anchors := [akLeft, akTop, akRight];
+    Anchors := [akLeft, akTop];
     AutoSize := True;
     Caption := 'Select Driver';
     Font.Style := [fsBold];
@@ -2002,7 +2018,7 @@ begin
   begin
     Parent := Page.Surface;
     Width := Page.SurfaceWidth;
-    Anchors := [akLeft, akTop, akRight];
+    Anchors := [akLeft, akTop];
     AutoSize := True;
     Caption := 'Current Driver';
     Font.Style := [fsBold];
@@ -2018,7 +2034,7 @@ begin
     Top := Base + ScaleY(5);
     Width := Page.SurfaceWidth;
     Height := ScaleY(18);
-    Anchors := [akLeft, akTop, akRight, akBottom];
+    Anchors := [akLeft, akTop, akRight];
     Flat := True;
     BorderStyle := bsNone;
     ParentColor := True;
