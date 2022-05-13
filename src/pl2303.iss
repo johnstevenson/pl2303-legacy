@@ -145,7 +145,7 @@ const
 
   DRIVER_INF = 'ser2pl.inf';
   LEGACY_HXA = '3.3.11.152';
-  LEGACY_TAB = '3.8.36.2';
+  LEGACY_TA = '3.8.36.2';
   MIN_DRIVER = '3.8.36.0';
 
   PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
@@ -367,21 +367,21 @@ begin
     Exit;
   end;
 
-  Package.DisplayName := 'Legacy HXA';
+  Package.DisplayName := 'Legacy PL2303 HXA';
   Package.Exists := Exists;
   Config.Packages[0] := Package;
 
   {Legacy TA/TB}
-  Package := GetLegacyPackage(DriverPath, LEGACY_TAB, Exists, Error);
-  DebugDriver('Registering legacy TA/TB package', Package);
+  Package := GetLegacyPackage(DriverPath, LEGACY_TA, Exists, Error);
+  DebugDriver('Registering legacy TA package', Package);
 
   if Error then
   begin
-    Debug('Error in legacy TA/TB package');
+    Debug('Error in legacy TA package');
     Exit;
   end;
 
-  Package.DisplayName := 'Legacy TA/TB';
+  Package.DisplayName := 'Legacy PL2303 TA';
   Package.Exists := Exists;
   Config.Packages[1] := Package;
 
@@ -1786,6 +1786,7 @@ begin
 
   GFinishPage.InfoHeader.Caption := Header;
   GFinishPage.Info.Caption := S;
+  GFinishPage.Info.Width := GPages.Finish.SurfaceWidth;
   GFinishPage.SaveButton.Visible := Update.Status = UPDATE_SUCCESS;
 
   if GFinishPage.SaveButton.Visible then
