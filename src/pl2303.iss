@@ -37,7 +37,7 @@ Uninstallable=no
 
 ; cosmetic
 WizardStyle=modern
-WizardSizePercent=110,100
+WizardSizePercent=110,110
 
 ; settings for release or dev compilations
 #ifdef Release
@@ -147,7 +147,7 @@ const
 
   DRIVER_INF = 'ser2pl.inf';
   LEGACY_HXA = '3.3.11.152';
-  LEGACY_TA = '3.8.36.2';
+  LEGACY_TAB = '3.8.36.2';
   MIN_DRIVER = '3.8.36.0';
 
   PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
@@ -369,21 +369,21 @@ begin
     Exit;
   end;
 
-  Package.DisplayName := 'Legacy PL2303 HXA';
+  Package.DisplayName := 'Legacy PL2303 HXA/XA';
   Package.Exists := Exists;
   Config.Packages[0] := Package;
 
   {Legacy TA/TB}
-  Package := GetLegacyPackage(DriverPath, LEGACY_TA, Exists, Error);
-  DebugDriver('Registering legacy TA package', Package);
+  Package := GetLegacyPackage(DriverPath, LEGACY_TAB, Exists, Error);
+  DebugDriver('Registering legacy TA/TB package', Package);
 
   if Error then
   begin
-    Debug('Error in legacy TA package');
+    Debug('Error in legacy TA/TB package');
     Exit;
   end;
 
-  Package.DisplayName := 'Legacy PL2303 TA';
+  Package.DisplayName := 'Legacy PL2303 TA/TB';
   Package.Exists := Exists;
   Config.Packages[1] := Package;
 
@@ -1095,8 +1095,6 @@ var
   Value: String;
   Phrases: Array[0..3] of String;
   I: Integer;
-  Index: Integer;
-  LastChar: String;
 
 begin
 
@@ -1105,34 +1103,26 @@ begin
 
   Value := Uppercase(Device.Description);
 
-  Phrases[0] := 'PLEASE CONTACT YOUR SUPPLIER';
-  Phrases[1] := 'CONTACT YOUR SUPPLIER';
-  Phrases[2] := 'PLEASE CONTACT';
-  Phrases[3] := 'CONTACT';
+  Phrases[0] := 'PLEASE INSTALL';
+  Phrases[1] := 'PLEASE CONTACT';
+  Phrases[2] := 'WINDOWS 11';
+  Phrases[3] := 'PHASED OUT';
 
   for I := Low(Phrases) to High(Phrases) do
   begin
-    Index := Pos(Phrases[I], Value);
 
-    if Index <> 0 then
+    if Pos(Phrases[I], Value) <> 0 then
+    begin
+      Device.ErrorMsg := Value;
+      {Not all messages are upper-cased and they are easier
+      to read in the list box if they are}
+      Device.Description := Value;
       Break;
+    end;
+
   end;
 
-  if Index = 0 then
-    Exit;
-
-  Value := Trim(Copy(Device.Description, 1, Index - 1));
-  Index := Length(Value);
-  LastChar := Value[Index];
-
-  if (LastChar = '.') or (LastChar = ',') then
-    Delete(Value, Index, 1);
-
-  Device.Description := Value;
-  Device.ErrorMsg := Value;
-
 end;
-
 
 function NoDevice(Config: TConfigRec): Boolean;
 begin
@@ -2033,7 +2023,7 @@ begin
     Parent := Page.Surface;
     Top := Base + ScaleY(5);
     Width := Page.SurfaceWidth;
-    Height := ScaleY(18);
+    Height := ScaleY(34);
     Anchors := [akLeft, akTop, akRight];
     Flat := True;
     BorderStyle := bsNone;

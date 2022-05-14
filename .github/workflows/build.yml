@@ -19,11 +19,11 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Compile PL2303-Legacy
+      - name: Compile PL2303 Legacy
         run: iscc src\pl2303.iss
         shell: cmd
 
-      - name: Run PL2303-Legacy
+      - name: Run PL2303 Legacy
         run: builds\output\PL2303Legacy-dev.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\install.txt
         shell: cmd
 
