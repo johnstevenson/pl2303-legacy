@@ -80,6 +80,7 @@ type
   end;
 
   TDeviceRec = record
+    Count       : Integer;
     Description : String;
     ErrorMsg    : String;
     Recognized  : Boolean;
@@ -165,7 +166,7 @@ procedure ThemeInit; forward;
 {Config functions}
 procedure ConfigUpdate(var Config: TConfigRec); forward;
 function GetPLDrivers(var Device: TDeviceRec): TPLDrivers; forward;
-function GetPLInstance(PnpOutput: TArrayOfString): TArrayOfString; forward;
+function GetPLInstance(PnpOutput: TArrayOfString; var InstanceCount: Integer): TArrayOfString; forward;
 function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers; forward;
 procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
@@ -183,6 +184,7 @@ function TestChip(Driver: TDriverRec; var Config: TConfigRec; var TestDevice: TD
 procedure DebugUnrecognizedDevice(Device: TDeviceRec); forward;
 function DeviceError(Device: TDeviceRec; Error: String): Boolean; forward;
 procedure InitDeviceRec(var Rec: TDeviceRec); forward;
+function MultiDevice(Config: TConfigRec): Boolean; forward;
 function NoDevice(Config: TConfigRec): Boolean; forward;
 procedure SetDeviceDescription(var Device: TDeviceRec); forward;
 procedure SetDeviceValidity(var Device: TDeviceRec); forward;
@@ -223,6 +225,7 @@ function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 {Custom page functions}
 function FinishPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String; forward;
 procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec); forward;
 procedure FinishPageSaveClick(Sender: TObject); forward;
 procedure ProgressPageShow(Driver: TDriverRec); forward;
@@ -285,7 +288,7 @@ begin
   S := 'For older devices that use unsupported Prolific microchips.';
   AddStr(S, ' If the current driver is not shown below, connect your device and click Scan Drivers.');
 
-  GPages.Start := StartPageCreate(wpWelcome, 'PL2303 legacy USB-to-Serial drivers', S);
+  GPages.Start := StartPageCreate(wpWelcome, 'PL2303 legacy USB drivers', S);
 
   GPages.Finish := FinishPageCreate(GPages.Start.ID,
     'Driver update result', '');
@@ -454,7 +457,7 @@ begin
   Config.Device := Device;
   Matched := False;
 
-  {Add LegaxyHXA}
+  {Add LegaxyHXA/XA}
   Driver := Config.Packages[0];
 
   if IsSameVersion(Device.Driver, Driver) then
@@ -486,6 +489,7 @@ var
   Output: TArrayOfString;
   Instance: TArrayOfString;
   Drivers: TArrayOfString;
+  InstanceCount: Integer;
 
 begin
 
@@ -494,20 +498,30 @@ begin
   if not ExecPnpEnumDevices(Output) then
     Exit;
 
-  Instance := GetPLInstance(Output);
-  Drivers := GetPLInstanceData(Instance, Device);
-  SetDeviceDescription(Device);
-  SetDeviceValidity(Device);
-  Result := GetPLMatchingDrivers(Drivers, Device);
+  Instance := GetPLInstance(Output, InstanceCount);
+
+  if InstanceCount = 1 then
+  begin
+    Device.Count := InstanceCount;
+    Drivers := GetPLInstanceData(Instance, Device);
+    SetDeviceDescription(Device);
+    SetDeviceValidity(Device);
+    Result := GetPLMatchingDrivers(Drivers, Device);
+  end
+  else
+  begin
+    InitDeviceRec(Device);
+    Device.Count := InstanceCount;
+    Device.Recognized := True;
+  end;
 
   DebugPLDrivers(Result);
 
 end;
 
-function GetPLInstance(PnpOutput: TArrayOfString): TArrayOfString;
+function GetPLInstance(PnpOutput: TArrayOfString; var InstanceCount: Integer): TArrayOfString;
 var
   Count: Integer;
-  InstanceCount: Integer;
   Index: Integer;
   I: Integer;
   Skip: Boolean;
@@ -515,9 +529,9 @@ var
 
 begin
 
+  InstanceCount := 0;
   Count := GetArrayLength(PnpOutput);
   SetArrayLength(Result, Count);
-  InstanceCount := 0;
   Index := 0;
   Skip := True;
 
@@ -528,7 +542,8 @@ begin
     if Pos('Instance ID:', Line) = 1 then
     begin
 
-      if Pos('USB\VID_067B&PID_2303', Uppercase(Line)) = 0 then
+      {Make sure we get all Prolific PL2303 range}
+      if Pos('USB\VID_067B&PID_23', Uppercase(Line)) = 0 then
         Skip := True
       else
       begin
@@ -537,7 +552,7 @@ begin
 
         if InstanceCount > 1 then
         begin
-          // Not really sure what to do here other than log it
+          {No drivers will be listed}
           Debug('More than one device is connected');
           Break;
         end;
@@ -575,7 +590,7 @@ begin
   Description := 'Device Description:';
   Name := 'Driver Name:';
 
-  // Parse out device data up to Matching Drivers key
+  {Parse out device data up to Matching Drivers key}
   for I := 0 to Count - 1 do
   begin
     Index := I;
@@ -606,7 +621,7 @@ begin
   Start := Index;
   Index := 0;
 
-  // Add Matching Drivers lines
+  {Add Matching Drivers lines}
   for I := Start to Count - 1 do
   begin
     Result[Index] := Trim(Instance[I]);
@@ -665,7 +680,7 @@ begin
       GetDriverDateAndVersion(Value, DriverRec);
       AddToDriverList(DriverRec, Result);
 
-      // See if this is the installed driver
+      {See if this is the installed driver}
       if DriverRec.OemInf = Device.Driver.OemInf then
         Device.Driver := DriverRec;
 
@@ -769,13 +784,23 @@ var
 
 begin
 
+  {Clear last driver}
+  GFlags.LastDriver := Driver;
+
   {See if we have a driver selected}
   Index := GStartPage.Drivers.ItemIndex;
 
   if Index <> -1 then
     Driver := Config.Drivers.Items[Index];
 
-  GFlags.LastDriver := Driver;
+  {Always skip with multiple devices because even though the update
+  could work, we only parse the first instance found}
+  if MultiDevice(Config) then
+  begin
+    Debug('Skipping update, multiple devices');
+    SetUpdateRec(Config, Driver, UPDATE_ERROR, False);
+    Exit;
+  end;
 
   {Note that we cannot use NoDevice here because the user may
   have connected and not scanned, or Windows may have found
@@ -794,6 +819,9 @@ begin
     end;
 
   end;
+
+  {Set last driver}
+  GFlags.LastDriver := Driver;
 
   GPages.Progress.Tag := WizardForm.CurPageID;
   ProgressPageShow(Driver);
@@ -925,15 +953,19 @@ begin
   if Status <> UPDATE_SUCCESS then
   begin
 
-    if NoDevice(Config) then
-      GUpdate.Message := 'Error: Not connected.'
+    GUpdate.Message := 'Error: ';
+
+    if MultiDevice(Config) then
+      AddStr(GUpdate.Message, 'Multiple devices')
+    else if NoDevice(Config) then
+      AddStr(GUpdate.Message, 'Not connected')
     else
     begin
 
       if Driver.Exists then
-        GUpdate.Message := 'Error: Unable to install the selected driver.'
+        AddStr(GUpdate.Message, 'Unable to install the selected driver.')
       else
-        GUpdate.Message := 'Error: No driver selected.';
+        AddStr(GUpdate.Message, 'No driver selected');
 
     end;
 
@@ -941,10 +973,12 @@ begin
   else
   begin
 
+    GUpdate.Message := 'Success: ';
+
     if SameDriver then
-      GUpdate.Message := 'Success: Driver already installed.'
+      AddStr(GUpdate.Message, 'Driver already installed')
     else
-      GUpdate.Message := 'Success: The selected driver has been installed.';
+      AddStr(GUpdate.Message, 'The selected driver has been installed');
 
   end;
 
@@ -1081,6 +1115,7 @@ end;
 procedure InitDeviceRec(var Rec: TDeviceRec);
 begin
 
+  Rec.Count := 0;
   Rec.Description := '';
   Rec.ErrorMsg := '';
   Rec.Recognized := False;
@@ -1088,6 +1123,16 @@ begin
   InitDriverRec(Rec.Driver);
   GetDriverDateAndVersion('', Rec.Driver);
 
+end;
+
+function MultiDevice(Config: TConfigRec): Boolean;
+begin
+  Result := Config.Device.Count > 1;
+end;
+
+function NoDevice(Config: TConfigRec): Boolean;
+begin
+  Result := Config.Device.Count = 0;
 end;
 
 procedure SetDeviceDescription(var Device: TDeviceRec);
@@ -1121,13 +1166,6 @@ begin
     end;
 
   end;
-
-end;
-
-function NoDevice(Config: TConfigRec): Boolean;
-begin
-
-  Result := IsEmpty(Config.Device.Description) or IsEmpty(Config.Device.Driver.OemInf);
 
 end;
 
@@ -1706,6 +1744,56 @@ begin
 
 end;
 
+function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String;
+begin
+
+  Result := '';
+
+  {Multi devices}
+  if MultiDevice(Config) then
+  begin
+     Result := 'Only one device can be connected to update a PL2303 driver.'
+     AddStr(Result, ' Please reconnect with a single device, then click Back to retry.');
+     Exit;
+  end;
+
+  {No device}
+  if NoDevice(Config) then
+  begin
+
+    if not Update.Driver.Exists then
+      {Either no drivers packaged or no driver selected}
+      Result := 'A device must be connected to find any PL2303 drivers.'
+    else
+      Result := 'A device must be connected to update the selected driver.';
+
+    AddStr(Result, ' Please connect your device, then click Back to retry.');
+    Exit;
+
+  end;
+
+  {Either no drivers packaged or no driver selected}
+  if not Update.Driver.Exists then
+  begin
+
+    if Config.Packages[0].Exists then
+      Result := 'Please click Back and select a driver.'
+    else
+    begin
+      Result := 'Please reconnect your device, then click Back to retry. If this fails,';
+      AddStr(Result, ' use Windows Device Manager to find a PL2303 driver.');
+    end;
+
+    Exit;
+
+  end;
+
+  {The update itself failed}
+  Result := 'Please reconnect your device, then click Back to retry. If this fails,';
+  AddStr(Result, ' you may need to restart your computer and run this program again.');
+
+end;
+
 procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec);
 var
   S: String;
@@ -1725,42 +1813,7 @@ begin
     UPDATE_ERROR:
       begin
         Header := 'Suggestions';
-
-        if NoDevice(Config) then
-        begin
-
-          if not Update.Driver.Exists then
-            {Either no drivers packaged or no driver selected}
-            S := 'A device must be connected to find any PL2303 drivers.'
-          else
-            S := 'A device must be connected to update the selected driver.';
-
-          AddStr(S, ' Please connect your device, then click Back to retry.');
-
-        end
-        else
-        begin
-
-          if not Update.Driver.Exists then
-          begin
-            {Either no drivers packaged or no driver selected}
-
-            if Config.Packages[0].Exists then
-              S := 'Please click Back and select a driver.'
-            else
-            begin
-              S := 'Please reconnect your device, then click Back to retry. If this fails,';
-              AddStr(S, ' use Windows Device Manager to find a PL2303 driver.');
-            end;
-
-          end
-          else
-          begin
-            S := 'Please reconnect your device, then click Back to retry. If this fails,';
-            AddStr(S, ' you may need to restart your computer and run this program again.');
-          end;
-
-        end;
+        S := FinishPageGetError(Config, Update);
       end;
 
     UPDATE_UNRECOGNIZED:
@@ -2059,11 +2112,12 @@ begin
   else
     Current := GFinishPage.Current;
 
-  if NoDevice(Config) then
-  begin
-    Caption := 'Device not connected.';
-    SubItem := '';
-  end
+  SubItem := '';
+
+  if MultiDevice(Config) then
+    Caption := 'Unknown (multiple devices connected)'
+  else if NoDevice(Config) then
+    Caption := 'Device not connected'
   else
   begin
     Caption := Config.Device.Description;
