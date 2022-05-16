@@ -80,11 +80,11 @@ type
   end;
 
   TDeviceRec = record
-    Count       : Integer;
-    Description : String;
-    ErrorMsg    : String;
-    Recognized  : Boolean;
-    Driver      : TDriverRec;
+    InstanceCount : Integer;
+    Description   : String;
+    ErrorStatus   : Integer;
+    ErrorHint     : String;
+    Driver        : TDriverRec;
   end;
 
   TConfigRec = record
@@ -154,6 +154,10 @@ const
   PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
   UPDATER_EXE = '{#UpdaterExe}';
 
+  DEVICE_ERROR_NONE = 0;
+  DEVICE_ERROR_GENERIC = 1;
+  DEVICE_ERROR_UNRECOGNIZED = 2;
+
   UPDATE_SUCCESS = 0;
   UPDATE_ERROR = 100;
   UPDATE_UNRECOGNIZED = 200;
@@ -166,9 +170,10 @@ procedure ThemeInit; forward;
 {Config functions}
 procedure ConfigUpdate(var Config: TConfigRec); forward;
 function GetPLDrivers(var Device: TDeviceRec): TPLDrivers; forward;
-function GetPLInstance(PnpOutput: TArrayOfString; var InstanceCount: Integer): TArrayOfString; forward;
+function GetPLInstance(PnpOutput: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers; forward;
+function IsMatchingInstance(InstanceLine: String): Boolean; forward;
 procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
 procedure SortDrivers(var Drivers: TPLDrivers); forward;
 
@@ -182,11 +187,14 @@ function TestChip(Driver: TDriverRec; var Config: TConfigRec; var TestDevice: TD
 
 {Device functions}
 procedure DebugUnrecognizedDevice(Device: TDeviceRec); forward;
-function DeviceError(Device: TDeviceRec; Error: String): Boolean; forward;
+function DeviceHasError(Device: TDeviceRec): Boolean; forward;
+function DeviceHint(Device: TDeviceRec; Error: String): Boolean; forward;
+function DeviceNotRecognized(Device: TDeviceRec): Boolean; forward;
 procedure InitDeviceRec(var Rec: TDeviceRec); forward;
+function IsExpectedDescription(Description: String): Boolean; forward;
+function HasComPort(Description: String): Boolean; forward;
 function MultiDevice(Config: TConfigRec): Boolean; forward;
 function NoDevice(Config: TConfigRec): Boolean; forward;
-procedure SetDeviceDescription(var Device: TDeviceRec); forward;
 procedure SetDeviceValidity(var Device: TDeviceRec); forward;
 
 {Driver utility functions}
@@ -489,51 +497,44 @@ var
   Output: TArrayOfString;
   Instance: TArrayOfString;
   Drivers: TArrayOfString;
-  InstanceCount: Integer;
 
 begin
 
-  Debug('Seaching for connected PL2303 device');
+  Debug('Seaching for a connected PL2303 device');
 
   if not ExecPnpEnumDevices(Output) then
     Exit;
 
-  Instance := GetPLInstance(Output, InstanceCount);
+  Instance := GetPLInstance(Output, Device);
 
-  if InstanceCount = 1 then
-  begin
-    Device.Count := InstanceCount;
-    Drivers := GetPLInstanceData(Instance, Device);
-    SetDeviceDescription(Device);
-    SetDeviceValidity(Device);
-    Result := GetPLMatchingDrivers(Drivers, Device);
-  end
+  if Device.InstanceCount <> 1 then
+    SetDeviceValidity(Device)
   else
   begin
-    InitDeviceRec(Device);
-    Device.Count := InstanceCount;
-    Device.Recognized := True;
+    Drivers := GetPLInstanceData(Instance, Device);
+    SetDeviceValidity(Device);
+    Result := GetPLMatchingDrivers(Drivers, Device);
   end;
 
   DebugPLDrivers(Result);
 
 end;
 
-function GetPLInstance(PnpOutput: TArrayOfString; var InstanceCount: Integer): TArrayOfString;
+function GetPLInstance(PnpOutput: TArrayOfString; var Device: TDeviceRec): TArrayOfString;
 var
   Count: Integer;
   Index: Integer;
   I: Integer;
-  Skip: Boolean;
+  IsMatching: Boolean;
   Line: String;
 
 begin
 
-  InstanceCount := 0;
+  Device.InstanceCount := 0;
   Count := GetArrayLength(PnpOutput);
   SetArrayLength(Result, Count);
   Index := 0;
-  Skip := True;
+  IsMatching := False;
 
   for I := 0 to Count - 1 do
   begin
@@ -542,25 +543,23 @@ begin
     if Pos('Instance ID:', Line) = 1 then
     begin
 
-      {Make sure we get all Prolific PL2303 range}
-      if Pos('USB\VID_067B&PID_23', Uppercase(Line)) = 0 then
-        Skip := True
-      else
-      begin
-        Skip := False;
-        Inc(InstanceCount);
+      IsMatching := IsMatchingInstance(Line);
 
-        if InstanceCount > 1 then
+      if IsMatching then
+      begin
+        Inc(Device.InstanceCount);
+
+        if Device.InstanceCount > 1 then
         begin
           {No drivers will be listed}
           Debug('More than one device is connected');
           Break;
         end;
-      end;
 
+      end;
     end;
 
-    if not Skip then
+    if IsMatching then
     begin
       Result[Index] := Line;
       Inc(Index);
@@ -690,6 +689,23 @@ begin
 
 end;
 
+function IsMatchingInstance(InstanceLine: String): Boolean;
+var
+  Value: String;
+
+begin
+
+  Result := False;
+  Value := Uppercase(InstanceLine);
+
+  {Make sure we get relevant PL2303 ids}
+  if Pos('USB\VID_067B&PID_2303', Value) <> 0 then
+    Result := True
+  else if Pos('USB\VID_067B&PID_2304', Value) <> 0 then
+    Result := True;
+
+end;
+
 procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec);
 var
   TmpDrivers: TPLDrivers;
@@ -742,7 +758,6 @@ begin
     AddToDriverList(TmpDrivers.Items[I], Config.Drivers);
 
 end;
-
 
 procedure SortDrivers(var Drivers: TPLDrivers);
 var
@@ -850,7 +865,7 @@ begin
     Exit;
   end;
 
-  if not TestDevice.Recognized then
+  if DeviceNotRecognized(TestDevice) then
   begin
     {Config will have been updated}
     DebugUnrecognizedDevice(TestDevice);
@@ -868,7 +883,7 @@ begin
       Exit;
     end;
 
-    if not Config.Device.Recognized then
+    if DeviceNotRecognized(Config.Device) then
     begin
       DebugUnrecognizedDevice(Config.Device);
       SetUpdateRec(Config, Driver, UPDATE_UNRECOGNIZED, SameDriver);
@@ -962,10 +977,17 @@ begin
     else
     begin
 
-      if Driver.Exists then
-        AddStr(GUpdate.Message, 'Unable to install the selected driver.')
+      if not Driver.Exists then
+        AddStr(GUpdate.Message, 'No driver selected')
       else
-        AddStr(GUpdate.Message, 'No driver selected');
+      begin
+
+        if Status = UPDATE_UNRECOGNIZED then
+          AddStr(GUpdate.Message, 'Unrecognized hardware')
+        else
+          AddStr(GUpdate.Message, 'Unable to install the selected driver');
+
+      end;
 
     end;
 
@@ -976,7 +998,7 @@ begin
     GUpdate.Message := 'Success: ';
 
     if SameDriver then
-      AddStr(GUpdate.Message, 'Driver already installed')
+      AddStr(GUpdate.Message, 'The driver is already installed')
     else
       AddStr(GUpdate.Message, 'The selected driver has been installed');
 
@@ -1000,7 +1022,7 @@ begin
   CurrentDriver := Config.Device.Driver;
   TestDevice := Config.Device;
 
-  if not TestDevice.Recognized then
+  if DeviceNotRecognized(TestDevice) then
     Exit;
 
   {Return if the current driver is one that reports unrecognized chips}
@@ -1048,7 +1070,7 @@ begin
 
   {If not recognized set config to the test config results
   so that this is shown on the finish page}
-  if not TestDevice.Recognized then
+  if DeviceNotRecognized(TestDevice) then
   begin
     Config := TestConfig;
     Exit;
@@ -1083,7 +1105,12 @@ begin
 
 end;
 
-function DeviceError(Device: TDeviceRec; Error: String): Boolean;
+function DeviceHasError(Device: TDeviceRec): Boolean;
+begin
+  Result := Device.ErrorStatus = DEVICE_ERROR_GENERIC;
+end;
+
+function DeviceHint(Device: TDeviceRec; Error: String): Boolean;
 var
   Parts: TArrayOfString;
   Count: Integer;
@@ -1093,7 +1120,7 @@ begin
 
   Result := False;
 
-  if IsEmpty(Device.ErrorMsg) then
+  if not DeviceHasError(Device) then
     Exit;
 
   Parts := SplitString(Error, '/');
@@ -1102,7 +1129,7 @@ begin
   for I := 0 to Count - 1 do
   begin
 
-    if Device.ErrorMsg = Parts[I] then
+    if Device.ErrorHint = Parts[I] then
     begin
       Result := True;
       Break;
@@ -1112,56 +1139,57 @@ begin
 
 end;
 
+function DeviceNotRecognized(Device: TDeviceRec): Boolean;
+begin
+  Result := Device.ErrorStatus = DEVICE_ERROR_UNRECOGNIZED;
+end;
+
 procedure InitDeviceRec(var Rec: TDeviceRec);
 begin
 
-  Rec.Count := 0;
+  Rec.InstanceCount := 0;
   Rec.Description := '';
-  Rec.ErrorMsg := '';
-  Rec.Recognized := False;
+  Rec.ErrorStatus := 0;
+  Rec.ErrorHint := '';
 
   InitDriverRec(Rec.Driver);
   GetDriverDateAndVersion('', Rec.Driver);
 
 end;
 
-function MultiDevice(Config: TConfigRec): Boolean;
-begin
-  Result := Config.Device.Count > 1;
-end;
-
-function NoDevice(Config: TConfigRec): Boolean;
-begin
-  Result := Config.Device.Count = 0;
-end;
-
-procedure SetDeviceDescription(var Device: TDeviceRec);
+function IsExpectedDescription(Description: String): Boolean;
 var
   Value: String;
-  Phrases: Array[0..3] of String;
+  Phrases: Array[0..4] of String;
   I: Integer;
 
 begin
 
-  if IsEmpty(Device.Description) then
+  Result := True;
+
+  if Pos('Prolific USB-to-Serial Comm Port', Description) = 1 then
     Exit;
 
-  Value := Uppercase(Device.Description);
+  if Pos('Prolific USB-to-GPIO/PWM Port', Description) = 1 then
+    Exit;
 
-  Phrases[0] := 'PLEASE INSTALL';
-  Phrases[1] := 'PLEASE CONTACT';
-  Phrases[2] := 'WINDOWS 11';
-  Phrases[3] := 'PHASED OUT';
+  if HasComPort(Description) then
+    Exit;
+
+  Value := Uppercase(Description);
+
+  Phrases[0] := 'PLEASE CONTACT';
+  Phrases[1] := 'NOT SUPPORTED';
+  Phrases[2] := 'PHASED OUT';
+  Phrases[3] := 'PLEASE INSTALL';
+  Phrases[4] := 'WINDOWS 11';
 
   for I := Low(Phrases) to High(Phrases) do
   begin
 
     if Pos(Phrases[I], Value) <> 0 then
     begin
-      Device.ErrorMsg := Value;
-      {Not all messages are upper-cased and they are easier
-      to read in the list box if they are}
-      Device.Description := Value;
+      Result := False;
       Break;
     end;
 
@@ -1169,62 +1197,100 @@ begin
 
 end;
 
-procedure SetDeviceValidity(var Device: TDeviceRec);
+function HasComPort(Description: String): Boolean;
 var
   Value: String;
-  Phrases: Array[0..2] of String;
-  I: Integer;
   Index: Integer;
-  Parts: TArrayOfString;
 
 begin
 
-  if IsEmpty(Device.Description) then
-  begin
-    {No device, so empty record}
-    Device.Recognized := True;
+  Result := False;
+  Value := Uppercase(Description);
+
+  Index := Pos('(COM', Value);
+
+  if Index = 0 then
     Exit;
+
+  Value := Copy(Value, Index + 4, MaxInt);
+  Index := Pos(')', Value);
+
+  if Index <> 0 then
+  begin
+    Delete(Value, Index, Maxint);
+    Result := StrToIntDef(Value, 0) <> 0;
   end;
 
-  Value := Uppercase(Device.Description);
+end;
 
-  Phrases[0] := 'NOT MATCH THE DRIVER';
-  Phrases[1] := 'NOT MATCH';
+function MultiDevice(Config: TConfigRec): Boolean;
+begin
+  Result := Config.Device.InstanceCount > 1;
+end;
+
+function NoDevice(Config: TConfigRec): Boolean;
+begin
+  Result := Config.Device.InstanceCount = 0;
+end;
+
+procedure SetDeviceValidity(var Device: TDeviceRec);
+var
+  Phrases: Array[0..3] of String;
+  I: Integer;
+  Parts: TArrayOfString;
+  Value: String;
+
+begin
+
+  {No device or multi device, so empty record}
+  if Device.InstanceCount <> 1 then
+    Exit;
+
+  {Everthing okay}
+  if IsExpectedDescription(Device.Description) then
+    Exit;
+
+  {Not all messages are upper-cased and they are easier
+  to read in the list box if they are}
+  Device.Description := Uppercase(Device.Description);
+  Device.ErrorStatus := DEVICE_ERROR_GENERIC;
+
+  {Check for unrecognized chips:
+    THIS IS NOT PROLIFIC PL2303. PLEASE CONTACT YOUR SUPPLIER.
+    YOUR PRODUCT DOES NOT MATCH THE DRIVER. PLEASE CONTACT YOUR SUPPLIER.}
+
+  Phrases[0] := 'NOT PROLIFIC PL2303';
+  Phrases[1] := 'NOT MATCH THE DRIVER';
   Phrases[2] := 'NOT PROLIFIC';
+  Phrases[3] := 'NOT MATCH';
 
   for I := Low(Phrases) to High(Phrases) do
   begin
-    Index := Pos(Phrases[I], Value);
 
-    {Matched, so device is not recognized}
-    if Index <> 0 then
+    if Pos(Phrases[I], Device.Description) <> 0 then
     begin
-      Device.Recognized := False;
+      {Phrase found, so device is not recognized}
+      Device.ErrorStatus := DEVICE_ERROR_UNRECOGNIZED;
       Exit;
     end;
 
   end;
 
-  {Not matched, so device is recognized}
-  Device.Recognized := True;
+  {Check for chip identification in description:
+    PL2303HXA PHASED OUT SINCE 2012. PLEASE CONTACT YOUR SUPPLIER.
+    PL2303TA DO NOT SUPPORT WINDOWS 11 OR LATER, PLEASE CONTACT YOUR SUPPLIER.
+    PL2303TB DO NOT SUPPORT WINDOWS 11 OR LATER, PLEASE CONTACT YOUR SUPPLIER.
+    Please install corresponding PL2303 driver to support Windows 11 and further OS.}
 
-  {Check for chip identification:
-    PL2303HXA PHASED OUT SINCE 2012
-    PL2303TA DO NOT SUPPORT WINDOWS 11 OR LATER
-    PL2303TB DO NOT SUPPORT WINDOWS 11 OR LATER}
+  Parts := SplitString(Device.Description, #32);
 
-  if NotEmpty(Device.ErrorMsg) then
+  if GetArrayLength(Parts) > 1 then
   begin
-    Parts := SplitString(Device.ErrorMsg, #32);
-    Device.ErrorMsg := '';
+    Value := Trim(Parts[0]);
 
-    if GetArrayLength(Parts) > 1 then
-    begin
-      Value := Trim(Parts[0]);
+    if Pos('PL2303', Value) = 1 then
+      Device.ErrorHint := Value;
 
-      if Pos('PL2303', Value) = 1 then
-        Device.ErrorMsg := Value;
-    end;
   end;
 
 end;
@@ -1818,20 +1884,20 @@ begin
 
     UPDATE_UNRECOGNIZED:
       begin
-        Header := 'Advice';
+        Header := 'Suggestions';
 
-        S := 'The driver does not recognize the microchip in your device, so it cannot be used.';
+        S := 'The driver does not recognize the microchip in your device.';
         AddStr(S, ' Click Back to retry with a different device, or contact your device supplier.');
       end;
   else
     begin
       Header := 'Information';
 
-      DriverError := NotEmpty(Config.Device.ErrorMsg);
+      DriverError := DeviceHasError(Config.Device);
 
       if DriverError then
       begin
-        S := 'The installed driver may not be the correct one for your device.';
+        S := 'The installed driver will not work with your device.';
         AddStr(S, ' Click Back to retry with a different driver.');
       end
       else
@@ -2009,13 +2075,13 @@ begin
     case Index of
       0:
       begin
-        Checked := Checked or DeviceError(Config.Device, 'PL2303HXA');
+        Checked := Checked or DeviceHint(Config.Device, 'PL2303HXA');
         Enabled := Driver.Exists;
       end;
 
       1:
       begin
-        Checked := Checked or DeviceError(Config.Device, 'PL2303TA/PL2303TB');
+        Checked := Checked or DeviceHint(Config.Device, 'PL2303TA/PL2303TB');
         Enabled := Driver.Exists;
       end;
 
