@@ -38,6 +38,7 @@ Uninstallable=no
 ; cosmetic
 WizardStyle=modern
 WizardSizePercent=110,110
+SetupIconFile=usb.ico
 
 ; settings for release or dev compilations
 #ifdef Release
@@ -1902,8 +1903,13 @@ begin
       end
       else
       begin
+      #ifdef SaveButton
         S := 'It is recommended that you save this program on your computer. You will need it';
-        AddStr(S, ' again if Windows Update changes your driver, or if you use different devices.');
+        AddStr(S, ' again if Windows Update changes your driver, or if you use multiple devices.');
+      #else
+        S := 'You will need to run this program again if Windows Update';
+        AddStr(S, ' changes your driver, or if you use multiple devices.');
+      #endif
       end;
 
     end;
@@ -1912,7 +1918,12 @@ begin
   DriverError := DriverError or (Update.Status <> UPDATE_SUCCESS);
   GFinishPage.InfoHeader.Caption := Header;
   GFinishPage.Info.Caption := S;
+
+#ifdef SaveButton
   GFinishPage.SaveButton.Visible := not DriverError;
+#else
+  GFinishPage.SaveButton.Visible := False;
+#endif
 
   if GFinishPage.SaveButton.Visible then
   begin
