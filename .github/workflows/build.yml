@@ -24,7 +24,7 @@ jobs:
         shell: cmd
 
       - name: Run PL2303 Legacy
-        run: builds\output\PL2303Legacy-dev.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\install.txt
+        run: builds\output\PL2303Legacy.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\install.txt
         shell: cmd
 
       - name: Upload run log

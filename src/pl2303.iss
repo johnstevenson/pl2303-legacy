@@ -4,14 +4,16 @@
 
 ; allow additional configuration
 #ifexist "config.iss"
-  #include "config.iss"
+  #ifndef Config
+    #include "config.iss"
+  #endif
 #endif
 
 #ifndef AppName
   #define AppName "PL2303 Legacy"
+  #define BaseFileName = "PL2303Legacy"
 #endif
 
-#define AppFileName = StringChange(AppName, " ", "")
 #define UpdaterExe "updater.exe"
 
 [Setup]
@@ -40,12 +42,10 @@ WizardStyle=modern
 WizardSizePercent=110,110
 SetupIconFile=usb.ico
 
-; settings for release or dev compilations
-#ifdef Release
-  #include "build.iss";
-#else
+; settings for dev compilations
+#ifndef Release
   OutputDir=..\builds\output
-  OutputBaseFilename={#AppFileName}-dev
+  OutputBaseFilename={#BaseFileName}
 #endif
 
 [LangOptions]
