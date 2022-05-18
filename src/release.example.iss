@@ -1,7 +1,6 @@
 #define Release
 
-; Set the release version in version.iss
-#include "version.iss"
+#include "config.iss"
 
 ; The unique name you add to the Inno Setup IDE, using the Tools menu.
 ; Click Configure Sign Tools, then Add to enter your unique name, then
@@ -17,8 +16,6 @@
 #define SignSha2 "sign /a /fd sha256 /tr http://time.certum.pl/ /td sha256 /as"
 
 [Setup]
-OutputDir=
-OutputBaseFilename=
 SignTool={#SignTool} {#SignExe} {#SignSha2} $f
 
 #include "pl2303.iss"

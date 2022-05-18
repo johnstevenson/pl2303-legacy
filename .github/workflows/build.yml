@@ -19,16 +19,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Compile PL2303 Legacy
-        run: iscc /Obuilds\output /FPL2303Legacy /DAppName=PL2303Legacy /DSetupVersion=0.1 src\pl2303.iss
+      - name: Compile Updater
+        run: iscc /DAppName=Updater /DAppVersion=1.0 src\pl2303.iss
         shell: cmd
 
-      - name: Run PL2303 Legacy
-        run: builds\output\PL2303Legacy.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\install.txt
+      - name: Run Updater
+        run: builds\output\Updater.exe /VERYSILENT /SUPPRESSMSGBOXES /CI=true /LOG=C:\updater.txt
         shell: cmd
 
-      - name: Upload run log
+      - name: Compile Setup
+        run: iscc /DAppName=Updater /DAppVersion=1.0 src\setup\setup.iss
+        shell: cmd
+
+      - name: Run Setup
+        run: builds\output\UpdaterSetup.exe /VERYSILENT /SUPPRESSMSGBOXES /LOG=C:\setup.txt
+        shell: cmd
+
+      - name : Upload logs
         uses: actions/upload-artifact@v3
         with:
-          name: run-log
-          path: C:\install.txt
+          path: |
+            C:\updater.txt
+            C:\setup.txt

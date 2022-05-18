@@ -5,11 +5,16 @@
   #endif
 #endif
 
+#ifndef Release
+  #define OutputDir "..\builds\output\"
+  #define OutputBaseFilename StringChange(AppName, " ", "")
+#endif
+
 #define PnpUpdaterExe "PnpUpdater.exe"
 
 [Setup]
 AppName={#AppName}
-AppVersion={#SetupVersion}
+AppVersion={#AppVersion}
 
 ; compile directives
 Compression=lzma
@@ -24,6 +29,7 @@ DisableDirPage=yes
 DisableReadyPage=yes
 DisableProgramGroupPage=yes
 CreateAppDir=no
+CloseApplications=no
 
 ; uninstall
 Uninstallable=no
@@ -33,15 +39,22 @@ WizardStyle=modern
 WizardSizePercent=110,110
 SetupIconFile=usb.ico
 
+; output
+OutputDir={#OutputDir}
+OutputBaseFilename={#OutputBaseFilename}
+
 [LangOptions]
 DialogFontSize=10
 
 [Files]
 Source: updater\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
+#ifdef DriverPath
+  Source: {#DriverPath}\*.*; DestDir: drivers; Flags: recursesubdirs dontcopy;
+#endif
 
 [Messages]
-SetupAppTitle={#AppName} {#SetupVersion}
-SetupWindowTitle={#AppName} {#SetupVersion}
+SetupAppTitle={#AppName} {#AppVersion}
+SetupWindowTitle={#AppName} {#AppVersion}
 FinishedHeadingLabel=[name] has completed
 FinishedLabelNoIcons=Run this progam again if your driver has changed.
 ClickFinish=Click Finish to exit.
