@@ -14,7 +14,7 @@
   #define BaseFileName = "PL2303Legacy"
 #endif
 
-#define UpdaterExe "updater.exe"
+#define PnpUpdaterExe "PnpUpdater.exe"
 
 [Setup]
 AppName={#AppName}
@@ -52,7 +52,7 @@ SetupIconFile=usb.ico
 DialogFontSize=10
 
 [Files]
-Source: updater\bin\Release\{#UpdaterExe}; Flags: dontcopy;
+Source: updater\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
 
 [Messages]
 SetupAppTitle={#AppName} {#SetupVersion}
@@ -82,6 +82,7 @@ type
 
   TDeviceRec = record
     InstanceCount : Integer;
+    HardwareId    : String;
     Description   : String;
     ErrorStatus   : Integer;
     ErrorHint     : String;
@@ -153,7 +154,7 @@ const
   MIN_DRIVER = '3.8.36.0';
 
   PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
-  UPDATER_EXE = '{#UpdaterExe}';
+  UPDATER_EXE = '{#PnpUpdaterExe}';
 
   DEVICE_ERROR_NONE = 0;
   DEVICE_ERROR_GENERIC = 1;
@@ -174,7 +175,7 @@ function GetPLDrivers(var Device: TDeviceRec): TPLDrivers; forward;
 function GetPLInstance(PnpOutput: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
 function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers; forward;
-function IsMatchingInstance(InstanceLine: String): Boolean; forward;
+function IsMatchingInstance(InstanceLine: String; var HardwareId: String): Boolean; forward;
 procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
 procedure SortDrivers(var Drivers: TPLDrivers); forward;
 
@@ -216,7 +217,7 @@ function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
 function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
 function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
 function ExecSaveProgram(Path: String): Boolean; forward;
-function ExecUpdater(InfPath: String): Boolean; forward;
+function ExecUpdater(HardwareId, InfPath: String): Boolean; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; Value: String); forward;
@@ -544,7 +545,7 @@ begin
     if Pos('Instance ID:', Line) = 1 then
     begin
 
-      IsMatching := IsMatchingInstance(Line);
+      IsMatching := IsMatchingInstance(Line, Device.HardwareId);
 
       if IsMatching then
       begin
@@ -690,9 +691,11 @@ begin
 
 end;
 
-function IsMatchingInstance(InstanceLine: String): Boolean;
+function IsMatchingInstance(InstanceLine: String; var HardwareId: String): Boolean;
 var
   Value: String;
+  Ids: Array[0..1] of String;
+  I: Integer;
 
 begin
 
@@ -700,10 +703,20 @@ begin
   Value := Uppercase(InstanceLine);
 
   {Make sure we get relevant PL2303 ids}
-  if Pos('USB\VID_067B&PID_2303', Value) <> 0 then
-    Result := True
-  else if Pos('USB\VID_067B&PID_2304', Value) <> 0 then
-    Result := True;
+  Ids[0] := 'USB\VID_067B&PID_2303';
+  Ids[1] := 'USB\VID_067B&PID_2304';
+
+  for I := Low(Ids) to High(Ids) do
+  begin
+
+    if Pos(Ids[I], Value) <> 0 then
+    begin
+      HardwareId := Ids[I];
+      Result := True;
+      Break;
+    end;
+
+  end;
 
 end;
 
@@ -917,7 +930,7 @@ begin
       Exit;
   end;
 
-  if not ExecUpdater(InfPath) then
+  if not ExecUpdater(Config.Device.HardwareId, InfPath) then
   begin
     DebugDriver('Failed to install driver', Driver);
     Exit;
@@ -1149,6 +1162,7 @@ procedure InitDeviceRec(var Rec: TDeviceRec);
 begin
 
   Rec.InstanceCount := 0;
+  Rec.HardwareId := '';
   Rec.Description := '';
   Rec.ErrorStatus := 0;
   Rec.ErrorHint := '';
@@ -1538,14 +1552,15 @@ begin
 
 end;
 
-function ExecUpdater(InfPath: String): Boolean;
+function ExecUpdater(HardwareId, InfPath: String): Boolean;
 var
   Params: String;
   ExitCode: Integer;
 
 begin
 
-  Params := ArgWin(InfPath);
+  Params := ArgWin(HardwareId);
+  AddParam(Params, ArgWin(InfPath));
 
   DebugExecBegin(GUpdaterExe, Params);
   Result := Exec(GUpdaterExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);

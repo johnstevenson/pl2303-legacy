@@ -1,3 +1,4 @@
 config.iss
 release.iss
 *[Dd]river*/
+*[Oo]utput/

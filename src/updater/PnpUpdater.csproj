@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{DA74B3DD-EC13-445E-9FA0-280C56826398}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>updater</RootNamespace>
-    <AssemblyName>updater</AssemblyName>
+    <RootNamespace>PnpUpdater</RootNamespace>
+    <AssemblyName>PnpUpdater</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
