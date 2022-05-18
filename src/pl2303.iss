@@ -1,17 +1,8 @@
-#ifndef SetupVersion
-  #include "version.iss"
-#endif
-
-; allow additional configuration
-#ifexist "config.iss"
-  #ifndef Config
+; a config.iss file is required
+#ifndef Config
+  #ifexist "config.iss"
     #include "config.iss"
   #endif
-#endif
-
-#ifndef AppName
-  #define AppName "PL2303 Legacy"
-  #define BaseFileName = "PL2303Legacy"
 #endif
 
 #define PnpUpdaterExe "PnpUpdater.exe"
@@ -41,12 +32,6 @@ Uninstallable=no
 WizardStyle=modern
 WizardSizePercent=110,110
 SetupIconFile=usb.ico
-
-; settings for dev compilations
-#ifndef Release
-  OutputDir=..\builds\output
-  OutputBaseFilename={#BaseFileName}
-#endif
 
 [LangOptions]
 DialogFontSize=10

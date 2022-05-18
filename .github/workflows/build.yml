@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 1
 
       - name: Compile PL2303 Legacy
-        run: iscc src\pl2303.iss
+        run: iscc /Obuilds\output /FPL2303Legacy /DAppName=PL2303Legacy /DSetupVersion=0.1 src\pl2303.iss
         shell: cmd
 
       - name: Run PL2303 Legacy
