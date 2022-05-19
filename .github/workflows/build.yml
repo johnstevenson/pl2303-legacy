@@ -28,7 +28,7 @@ jobs:
         shell: cmd
 
       - name: Compile Setup
-        run: iscc /DAppName=Updater /DAppVersion=1.0 src\setup\setup.iss
+        run: iscc /DAppName=Updater /DAppVersion=1.0 src\installer\setup.iss
         shell: cmd
 
       - name: Run Setup
