@@ -53,7 +53,7 @@ Source: "{#AppExeSrc}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: igno
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram, {#AppName}}"; Flags: nowait postinstall runascurrentuser skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram, {#AppName}}"; Flags: unchecked nowait postinstall runascurrentuser skipifsilent
 
 [Code]
 type
