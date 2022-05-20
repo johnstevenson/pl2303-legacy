@@ -121,7 +121,6 @@ type
     Current     : TNewCheckListBox;
     InfoHeader  : TNewStaticText;
     Info        : TNewStaticText;
-    SaveButton  : TNewButton;
   end;
 
 var
@@ -214,7 +213,6 @@ function ExecPnp(Params: String): Boolean; forward;
 function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
 function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
 function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
-function ExecSaveProgram(Path: String): Boolean; forward;
 function ExecUpdater(HardwareId, InfPath: String): Boolean; forward;
 
 {Common functions}
@@ -235,7 +233,6 @@ function SplitString(Value, Separator: String): TArrayOfString; forward;
 function FinishPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String; forward;
 procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec); forward;
-procedure FinishPageSaveClick(Sender: TObject); forward;
 procedure ProgressPageShow(Driver: TDriverRec); forward;
 function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure StartPageScanClick(Sender: TObject); forward;
@@ -1532,24 +1529,6 @@ begin
 
 end;
 
-function ExecSaveProgram(Path: String): Boolean;
-var
-  Setup: String;
-  Params: String;
-  ExitCode: Integer;
-
-begin
-
-  Setup := ExpandConstant('{srcexe}');
-  Params := Format('/c "copy %s %s"', [ArgCmd(Setup), ArgCmd(Path)]);
-
-  DebugExecBegin(GCmdExe, Params);
-  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-end;
-
 function ExecUpdater(HardwareId, InfPath: String): Boolean;
 var
   Params: String;
@@ -1809,19 +1788,6 @@ begin
     Caption := '';
   end;
 
-  Base := GetBase(GFinishPage.Info);
-  GFinishPage.SaveButton := TNewButton.Create(Result);
-
-  with GFinishPage.SaveButton do
-  begin
-    Parent := Result.Surface;
-    Top := Base + ScaleY(6);
-    Caption := 'Save now';
-    Width := WizardForm.CalculateButtonWidth([Caption]);
-    Height := ScaleY(23);
-    OnClick := @FinishPageSaveClick;
-  end;
-
 end;
 
 function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String;
@@ -1877,15 +1843,12 @@ end;
 procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec);
 var
   S: String;
-  DriverError: Boolean;
   Header: String;
-  Base: Integer;
 
 begin
 
   WizardForm.ActiveControl := Nil;
   GPages.Finish.Description := Update.Message;
-  DriverError := False;
 
   SetCurrentDriver(GPages.Finish, Config);
 
@@ -1907,67 +1870,22 @@ begin
     begin
       Header := 'Information';
 
-      DriverError := DeviceHasError(Config.Device);
-
-      if DriverError then
+      if DeviceHasError(Config.Device) then
       begin
         S := 'The installed driver will not work with your device.';
         AddStr(S, ' Click Back to retry with a different driver.');
       end
       else
       begin
-      #ifdef SaveButton
-        S := 'It is recommended that you save this program on your computer. You will need it';
-        AddStr(S, ' again if Windows Update changes your driver, or if you use multiple devices.');
-      #else
         S := 'You will need to run this program again if Windows Update';
         AddStr(S, ' changes your driver, or if you use multiple devices.');
-      #endif
       end;
 
     end;
   end;
 
-  DriverError := DriverError or (Update.Status <> UPDATE_SUCCESS);
   GFinishPage.InfoHeader.Caption := Header;
   GFinishPage.Info.Caption := S;
-
-#ifdef SaveButton
-  GFinishPage.SaveButton.Visible := not DriverError;
-#else
-  GFinishPage.SaveButton.Visible := False;
-#endif
-
-  if GFinishPage.SaveButton.Visible then
-  begin
-    Base := GetBase(GFinishPage.Info);
-    GFinishPage.SaveButton.Top := Base + ScaleY(8);
-  end;
-
-end;
-
-procedure FinishPageSaveClick(Sender: TObject);
-var
-  FilePath: String;
-  FileName: String;
-  Directory: String;
-  Prompt: String;
-
-begin
-
-  Debug('User clicked Save now');
-
-  FilePath := ExpandConstant('{srcexe}');
-  FileName := ExtractFilename(FilePath);
-  Prompt := Format('Choose where to save %s%s', [LF, FileName]);
-
-  if not BrowseForFolder(Prompt, Directory, True) then
-    Exit;
-
-  FilePath := Directory + '\' + FileName;
-
-  if not ExecSaveProgram(FilePath) then
-    ShowErrorMessage('Unable to save file: ' + FilePath);
 
 end;
 
