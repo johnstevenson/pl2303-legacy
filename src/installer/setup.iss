@@ -55,6 +55,10 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram, {#AppName}}"; Flags: unchecked nowait postinstall runascurrentuser skipifsilent
 
+[Messages]
+SetupAppTitle=Setup - {#AppName}
+SetupWindowTitle=Setup - {#AppName} {#AppVersion}
+
 [Code]
 type
   TStartPage = record

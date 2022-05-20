@@ -55,7 +55,7 @@ Source: pnp\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
 #endif
 
 [Messages]
-SetupAppTitle={#AppName} {#AppVersion}
+SetupAppTitle={#AppName}
 SetupWindowTitle={#AppName} {#AppVersion}
 
 [Code]
@@ -426,7 +426,7 @@ var
 begin
 
   {Hex 303030}
-  Color := (48 shl 16) + (48 shl 8) + 48;
+  Color := (30 shl 16) + (30 shl 8) + 30;
   WizardForm.Font.Color := Color;
 
 end;
@@ -1951,7 +1951,7 @@ begin
   with GStatusPage.InfoHeader do
   begin
     Parent := Result.Surface;
-    Top := Base + ScaleY(26);
+    Top := Base + ScaleY(5);
     Width := Result.SurfaceWidth;
     Anchors := [akLeft, akTop];
     AutoSize := True;
