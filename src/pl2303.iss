@@ -231,11 +231,11 @@ function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 {Custom page functions}
 procedure ProgressPageShow(Driver: TDriverRec); forward;
-function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+function StartPageCreate(Id: Integer): TWizardPage; forward;
 procedure StartPageScanClick(Sender: TObject); forward;
 procedure StartPageScanUpdate; forward;
 procedure StartPageUpdate(Config: TConfigRec); forward;
-function StatusPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+function StatusPageCreate(Id: Integer): TWizardPage; forward;
 function StatusPageGetError(Config: TConfigRec; Update: TUpdateRec): String; forward;
 procedure StatusPageUpdate(Config: TConfigRec; Update: TUpdateRec); forward;
 
@@ -284,19 +284,12 @@ begin
 end;
 
 procedure InitializeWizard;
-var S: String;
-
 begin
 
   ThemeInit();
 
-  S := 'For older devices that use unsupported Prolific microchips.';
-  AddStr(S, ' If the current driver is not shown below, connect your device and click Scan Drivers.');
-
-  GPages.Start := StartPageCreate(wpWelcome, 'PL2303 legacy USB drivers', S);
-
-  GPages.Status := StatusPageCreate(GPages.Start.ID,
-    'Driver update result', '');
+  GPages.Start := StartPageCreate(wpWelcome);
+  GPages.Status := StatusPageCreate(GPages.Start.ID);
 
   GPages.Progress := CreateOutputProgressPage('', '');
 
@@ -1764,8 +1757,10 @@ begin
 
 end;
 
-function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+function StartPageCreate(Id: Integer): TWizardPage;
 var
+  Title: String;
+  Text: String;
   Base: Integer;
   ScanButton: TNewButton;
   DriverText: TNewStaticText;
@@ -1773,7 +1768,11 @@ var
 
 begin
 
-  Result := CreateCustomPage(Id, Caption, Description);
+  Title := 'PL2303 legacy USB drivers';
+  Text := 'For older devices that use unsupported Prolific microchips. If the current';
+  AddStr(Text, ' driver is not shown below, connect your device and click Scan Drivers.');
+
+  Result := CreateCustomPage(Id, Title, Text);
   CreateCurrentDriver(Result);
 
   Base := GetBase(GStartPage.Current);
@@ -1911,13 +1910,15 @@ begin
 
 end;
 
-function StatusPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+function StatusPageCreate(Id: Integer): TWizardPage;
 var
+  Title: String;
   Base: Integer;
 
 begin
 
-  Result := CreateCustomPage(Id, Caption, Description);
+  Title := 'Driver update status';
+  Result := CreateCustomPage(Id, Title, '');
   CreateCurrentDriver(Result);
 
   Base := GetBase(GStatusPage.Current);
