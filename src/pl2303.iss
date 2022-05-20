@@ -107,9 +107,9 @@ type
   end;
 
   TCustomPages = record
-    Start     : TWizardPage;
-    Progress  : TOutputProgressWizardPage;
-    Finish    : TWizardPage;
+    Start       : TWizardPage;
+    Progress    : TOutputProgressWizardPage;
+    Status      : TWizardPage;
   end;
 
   TStartPage = record
@@ -117,7 +117,7 @@ type
     Drivers     : TNewCheckListBox;
   end;
 
-  TFinishPage = record
+  TStatusPage = record
     Current     : TNewCheckListBox;
     InfoHeader  : TNewStaticText;
     Info        : TNewStaticText;
@@ -135,7 +135,7 @@ var
   GExportDir: String;               {folder to export to in temp directory}
   GPages: TCustomPages;             {group of custom pages}
   GStartPage: TStartPage;           {contains Start page controls}
-  GFinishPage: TFinishPage;         {contains Finish page controls}
+  GStatusPage: TStatusPage;         {contains Status page controls}
 
 const
   LF = #13#10;
@@ -230,14 +230,14 @@ procedure ShowErrorMessage(Message: String); forward;
 function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 {Custom page functions}
-function FinishPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
-function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String; forward;
-procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec); forward;
 procedure ProgressPageShow(Driver: TDriverRec); forward;
 function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure StartPageScanClick(Sender: TObject); forward;
 procedure StartPageScanUpdate; forward;
 procedure StartPageUpdate(Config: TConfigRec); forward;
+function StatusPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+function StatusPageGetError(Config: TConfigRec; Update: TUpdateRec): String; forward;
+procedure StatusPageUpdate(Config: TConfigRec; Update: TUpdateRec); forward;
 
 {Custom page utility functions}
 procedure CreateCurrentDriver(Page: TWizardPage); forward;
@@ -295,7 +295,7 @@ begin
 
   GPages.Start := StartPageCreate(wpWelcome, 'PL2303 legacy USB drivers', S);
 
-  GPages.Finish := FinishPageCreate(GPages.Start.ID,
+  GPages.Status := StatusPageCreate(GPages.Start.ID,
     'Driver update result', '');
 
   GPages.Progress := CreateOutputProgressPage('', '');
@@ -315,8 +315,8 @@ begin
       StartPageScanUpdate();
 
   end
-  else if CurPageID = GPages.Finish.ID then
-    FinishPageUpdate(GConfig, GUpdate);
+  else if CurPageID = GPages.Status.ID then
+    StatusPageUpdate(GConfig, GUpdate);
   {
   if CurPageID = GPages.Finish.ID then
   begin
@@ -1078,7 +1078,7 @@ begin
   TestDevice := TestConfig.Device;
 
   {If not recognized set config to the test config results
-  so that this is shown on the finish page}
+  so that this is shown on the status page}
   if DeviceNotRecognized(TestDevice) then
   begin
     Config := TestConfig;
@@ -1641,7 +1641,7 @@ begin
     {Custom pages}
     GPages.Start.ID            : Name := 'Custom Page: Start';
     GPages.Progress.ID         : Name := 'Custom Page: Updating';
-    GPages.Finish.ID           : Name := 'Custom Page: Completed Updating';
+    GPages.Status.ID           : Name := 'Custom Page: Driver Update Status';
 
   else
     Name := 'Unknown';
@@ -1748,146 +1748,6 @@ end;
 
 
 {*************** Custom page functions ***************}
-
-function FinishPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
-var
-  Base: Integer;
-
-begin
-
-  Result := CreateCustomPage(Id, Caption, Description);
-  CreateCurrentDriver(Result);
-
-  Base := GetBase(GFinishPage.Current);
-
-  GFinishPage.InfoHeader := TNewStaticText.Create(Result);
-
-  with GFinishPage.InfoHeader do
-  begin
-    Parent := Result.Surface;
-    Top := Base + ScaleY(26);
-    Width := Result.SurfaceWidth;
-    Anchors := [akLeft, akTop];
-    AutoSize := True;
-    Caption := 'Important information';
-    Font.Style := [fsBold];
-  end;
-
-  Base := GetBase(GFinishPage.InfoHeader);
-
-  GFinishPage.Info := TNewStaticText.Create(Result);
-
-  with GFinishPage.Info do
-  begin
-    Parent := Result.Surface;
-    Top := Base + ScaleY(5);
-    Width := Result.SurfaceWidth;
-    Anchors := [akLeft, akTop, akRight];
-    AutoSize := True;
-    WordWrap := True;
-    Caption := '';
-  end;
-
-end;
-
-function FinishPageGetError(Config: TConfigRec; Update: TUpdateRec): String;
-begin
-
-  Result := '';
-
-  {Multi devices}
-  if MultiDevice(Config) then
-  begin
-     Result := 'Only one device can be connected to update a PL2303 driver.'
-     AddStr(Result, ' Please reconnect with a single device, then click Back to retry.');
-     Exit;
-  end;
-
-  {No device}
-  if NoDevice(Config) then
-  begin
-
-    if not Update.Driver.Exists then
-      {Either no drivers packaged or no driver selected}
-      Result := 'A device must be connected to find any PL2303 drivers.'
-    else
-      Result := 'A device must be connected to update the selected driver.';
-
-    AddStr(Result, ' Please connect your device, then click Back to retry.');
-    Exit;
-
-  end;
-
-  {Either no drivers packaged or no driver selected}
-  if not Update.Driver.Exists then
-  begin
-
-    if Config.Packages[0].Exists then
-      Result := 'Please click Back and select a driver.'
-    else
-    begin
-      Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-      AddStr(Result, ' use Windows Device Manager to find a PL2303 driver.');
-    end;
-
-    Exit;
-
-  end;
-
-  {The update itself failed}
-  Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-  AddStr(Result, ' you may need to restart your computer and run this program again.');
-
-end;
-
-procedure FinishPageUpdate(Config: TConfigRec; Update: TUpdateRec);
-var
-  S: String;
-  Header: String;
-
-begin
-
-  WizardForm.ActiveControl := Nil;
-  GPages.Finish.Description := Update.Message;
-
-  SetCurrentDriver(GPages.Finish, Config);
-
-  case Update.Status of
-    UPDATE_ERROR:
-      begin
-        Header := 'Suggestions';
-        S := FinishPageGetError(Config, Update);
-      end;
-
-    UPDATE_UNRECOGNIZED:
-      begin
-        Header := 'Suggestions';
-
-        S := 'The driver does not recognize the microchip in your device.';
-        AddStr(S, ' Click Back to retry with a different device, or contact your device supplier.');
-      end;
-  else
-    begin
-      Header := 'Information';
-
-      if DeviceHasError(Config.Device) then
-      begin
-        S := 'The installed driver will not work with your device.';
-        AddStr(S, ' Click Back to retry with a different driver.');
-      end
-      else
-      begin
-        S := 'You will need to run this program again if Windows Update';
-        AddStr(S, ' changes your driver, or if you use multiple devices.');
-      end;
-
-    end;
-  end;
-
-  GFinishPage.InfoHeader.Caption := Header;
-  GFinishPage.Info.Caption := S;
-
-end;
 
 procedure ProgressPageShow(Driver: TDriverRec);
 var
@@ -2051,6 +1911,145 @@ begin
 
 end;
 
+function StatusPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+var
+  Base: Integer;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+  CreateCurrentDriver(Result);
+
+  Base := GetBase(GStatusPage.Current);
+
+  GStatusPage.InfoHeader := TNewStaticText.Create(Result);
+
+  with GStatusPage.InfoHeader do
+  begin
+    Parent := Result.Surface;
+    Top := Base + ScaleY(26);
+    Width := Result.SurfaceWidth;
+    Anchors := [akLeft, akTop];
+    AutoSize := True;
+    Caption := 'Important information';
+    Font.Style := [fsBold];
+  end;
+
+  Base := GetBase(GStatusPage.InfoHeader);
+
+  GStatusPage.Info := TNewStaticText.Create(Result);
+
+  with GStatusPage.Info do
+  begin
+    Parent := Result.Surface;
+    Top := Base + ScaleY(5);
+    Width := Result.SurfaceWidth;
+    Anchors := [akLeft, akTop, akRight];
+    AutoSize := True;
+    WordWrap := True;
+    Caption := '';
+  end;
+
+end;
+
+function StatusPageGetError(Config: TConfigRec; Update: TUpdateRec): String;
+begin
+
+  Result := '';
+
+  {Multi devices}
+  if MultiDevice(Config) then
+  begin
+     Result := 'Only one device can be connected to update a PL2303 driver.'
+     AddStr(Result, ' Please reconnect with a single device, then click Back to retry.');
+     Exit;
+  end;
+
+  {No device}
+  if NoDevice(Config) then
+  begin
+
+    if not Update.Driver.Exists then
+      {Either no drivers packaged or no driver selected}
+      Result := 'A device must be connected to find any PL2303 drivers.'
+    else
+      Result := 'A device must be connected to update the selected driver.';
+
+    AddStr(Result, ' Please connect your device, then click Back to retry.');
+    Exit;
+
+  end;
+
+  {Either no drivers packaged or no driver selected}
+  if not Update.Driver.Exists then
+  begin
+
+    if Config.Packages[0].Exists then
+      Result := 'Please click Back and select a driver.'
+    else
+    begin
+      Result := 'Please reconnect your device, then click Back to retry. If this fails,';
+      AddStr(Result, ' use Windows Device Manager to find a PL2303 driver.');
+    end;
+
+    Exit;
+
+  end;
+
+  {The update itself failed}
+  Result := 'Please reconnect your device, then click Back to retry. If this fails,';
+  AddStr(Result, ' you may need to restart your computer and run this program again.');
+
+end;
+
+procedure StatusPageUpdate(Config: TConfigRec; Update: TUpdateRec);
+var
+  S: String;
+  Header: String;
+
+begin
+
+  WizardForm.ActiveControl := Nil;
+  GPages.Status.Description := Update.Message;
+
+  SetCurrentDriver(GPages.Status, Config);
+
+  case Update.Status of
+    UPDATE_ERROR:
+      begin
+        Header := 'Suggestions';
+        S := StatusPageGetError(Config, Update);
+      end;
+
+    UPDATE_UNRECOGNIZED:
+      begin
+        Header := 'Suggestions';
+
+        S := 'The driver does not recognize the microchip in your device.';
+        AddStr(S, ' Click Back to retry with a different device, or contact your device supplier.');
+      end;
+  else
+    begin
+      Header := 'Information';
+
+      if DeviceHasError(Config.Device) then
+      begin
+        S := 'The installed driver will not work with your device.';
+        AddStr(S, ' Click Back to retry with a different driver.');
+      end
+      else
+      begin
+        S := 'You will need to run this program again if Windows Update';
+        AddStr(S, ' changes your driver, or if you use multiple devices.');
+      end;
+
+    end;
+  end;
+
+  GStatusPage.InfoHeader.Caption := Header;
+  GStatusPage.Info.Caption := S;
+
+end;
 
 {*************** Custom page utility functions ***************}
 
@@ -2097,7 +2096,7 @@ begin
   if Page.ID = GPages.Start.ID then
     GStartPage.Current := Current
   else
-    GFinishPage.Current := Current;
+    GStatusPage.Current := Current;
 
 end;
 
@@ -2118,7 +2117,7 @@ begin
   if Page.ID = GPages.Start.ID then
     Current := GStartPage.Current
   else
-    Current := GFinishPage.Current;
+    Current := GStatusPage.Current;
 
   SubItem := '';
 
