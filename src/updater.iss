@@ -49,7 +49,7 @@ OutputBaseFilename={#OutputBaseFilename}
 DialogFontSize=10
 
 [Files]
-Source: updater\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
+Source: pnp\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
 #ifdef DriverPath
   Source: {#DriverPath}\*.*; DestDir: drivers; Flags: recursesubdirs dontcopy;
 #endif

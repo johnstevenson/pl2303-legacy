@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 1
 
       - name: Compile Updater
-        run: iscc /DAppName=Updater /DAppVersion=1.0 src\pl2303.iss
+        run: iscc /DAppName=Updater /DAppVersion=1.0 src\updater.iss
         shell: cmd
 
       - name: Run Updater
