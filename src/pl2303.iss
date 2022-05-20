@@ -28,6 +28,7 @@ DisableWelcomePage=yes
 DisableDirPage=yes
 DisableReadyPage=yes
 DisableProgramGroupPage=yes
+DisableFinishedPage=yes
 CreateAppDir=no
 CloseApplications=no
 
@@ -37,7 +38,8 @@ Uninstallable=no
 ; cosmetic
 WizardStyle=modern
 WizardSizePercent=110,110
-SetupIconFile=usb.ico
+WizardSmallImageFile=wizimage.bmp
+SetupIconFile=wizicon.ico
 
 ; output
 OutputDir={#OutputDir}
@@ -55,9 +57,6 @@ Source: updater\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
 [Messages]
 SetupAppTitle={#AppName} {#AppVersion}
 SetupWindowTitle={#AppName} {#AppVersion}
-FinishedHeadingLabel=[name] has completed
-FinishedLabelNoIcons=Run this progam again if your driver has changed.
-ClickFinish=Click Finish to exit.
 
 [Code]
 type
@@ -110,6 +109,7 @@ type
     Start       : TWizardPage;
     Progress    : TOutputProgressWizardPage;
     Status      : TWizardPage;
+    Finish      : TWizardPage;
   end;
 
   TStartPage = record
@@ -230,6 +230,7 @@ procedure ShowErrorMessage(Message: String); forward;
 function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 {Custom page functions}
+function FinishPageCreate(Id: Integer): TWizardPage; forward;
 procedure ProgressPageShow(Driver: TDriverRec); forward;
 function StartPageCreate(Id: Integer): TWizardPage; forward;
 procedure StartPageScanClick(Sender: TObject); forward;
@@ -290,6 +291,7 @@ begin
 
   GPages.Start := StartPageCreate(wpWelcome);
   GPages.Status := StatusPageCreate(GPages.Start.ID);
+  GPages.Finish := FinishPageCreate(wpInstalling);
 
   GPages.Progress := CreateOutputProgressPage('', '');
 
@@ -310,18 +312,12 @@ begin
   end
   else if CurPageID = GPages.Status.ID then
     StatusPageUpdate(GConfig, GUpdate);
-  {
+
   if CurPageID = GPages.Finish.ID then
-  begin
-    WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish);
-    WizardForm.CancelButton.Visible := False;
-  end
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish)
   else
-  begin
     WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
-    WizardForm.CancelButton.Visible := True;
-  end;
-  }
+
   DebugPageName(CurPageID);
 
 end;
@@ -997,12 +993,10 @@ begin
   else
   begin
 
-    GUpdate.Message := 'Success: ';
-
     if SameDriver then
-      AddStr(GUpdate.Message, 'The driver is already installed')
+      GUpdate.Message := 'The driver is already installed'
     else
-      AddStr(GUpdate.Message, 'The selected driver has been installed');
+      GUpdate.Message :=  'The selected driver has been installed';
 
   end;
 
@@ -1630,11 +1624,11 @@ begin
     wpReady                    : Name := 'Ready to Install';
     wpPreparing                : Name := 'Preparing to Install';
     wpInstalling               : Name := 'Installing';
-    wpFinished                 : Name := 'Setup Completed';
     {Custom pages}
     GPages.Start.ID            : Name := 'Custom Page: Start';
     GPages.Progress.ID         : Name := 'Custom Page: Updating';
-    GPages.Status.ID           : Name := 'Custom Page: Driver Update Status';
+    GPages.Status.ID           : Name := 'Custom Page: Status';
+    GPages.Finish.ID           : Name := 'Custom Page: Completed';
 
   else
     Name := 'Unknown';
@@ -1741,6 +1735,35 @@ end;
 
 
 {*************** Custom page functions ***************}
+
+function FinishPageCreate(Id: Integer): TWizardPage;
+var
+  Title: String;
+  Text: String;
+  Info: TNewStaticText;
+
+begin
+
+  {We could have used CreateOutputMsgPage, but this allows
+  for any future customization}
+
+  Title := Format('%s has completed', [APP_NAME]);
+  Text:= 'Run this progam again if your driver has changed.';
+  Result := CreateCustomPage(Id, Title, Text);
+
+  Info := TNewStaticText.Create(Result);
+
+  with Info do
+  begin
+    Parent := Result.Surface;
+    Width := Result.SurfaceWidth;
+    Anchors := [akLeft, akTop, akRight];
+    AutoSize := True;
+    WordWrap := True;
+    Caption := 'Click Finish to exit.';
+  end;
+
+end;
 
 procedure ProgressPageShow(Driver: TDriverRec);
 var
