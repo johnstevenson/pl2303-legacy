@@ -1792,8 +1792,8 @@ var
 begin
 
   Title := 'PL2303 legacy USB drivers';
-  Text := 'For older devices that use unsupported Prolific microchips. If the current';
-  AddStr(Text, ' driver is not shown below, connect your device and click Scan Drivers.');
+  Text := 'For devices that use unsupported Prolific microchips. If the current driver';
+  AddStr(Text, ' is not shown below, connect your device and click Scan Drivers.');
 
   Result := CreateCustomPage(Id, Title, Text);
   CreateCurrentDriver(Result);
@@ -1984,7 +1984,7 @@ begin
   {Multi devices}
   if MultiDevice(Config) then
   begin
-     Result := 'Only one device can be connected to update a PL2303 driver.'
+     Result := 'Only one device should be connected to update a PL2303 driver.'
      AddStr(Result, ' Please reconnect with a single device, then click Back to retry.');
      Exit;
   end;
@@ -2063,8 +2063,8 @@ begin
       end
       else
       begin
-        S := 'You will need to run this program again if Windows Update';
-        AddStr(S, ' changes your driver, or if you use multiple devices.');
+        S := 'You will need to run this program again if Windows Update changes your driver,';
+        AddStr(S, ' or if you use other devices that require a different PL2303 driver.');
       end;
 
     end;
@@ -2146,7 +2146,7 @@ begin
   SubItem := '';
 
   if MultiDevice(Config) then
-    Caption := 'Unknown (multiple devices connected)'
+    Caption := 'Multiple devices connected'
   else if NoDevice(Config) then
     Caption := 'Device not connected'
   else
