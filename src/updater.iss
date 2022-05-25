@@ -58,25 +58,13 @@ Source: pnp\bin\Release\{#PnpUpdaterExe}; Flags: dontcopy;
 SetupAppTitle={#AppName}
 SetupWindowTitle={#AppName} {#AppVersion}
 
+#include "shared\escape.iss"
+#include "shared\common.iss"
+
 [Code]
 type
-  TDriverRec = record
-    OemInf        : String;
-    OriginalInf   : String;
-    Version       : String;
-    PackedVersion : Int64;
-    Date          : String;
-    DisplayName   : String;
-    Exists        : Boolean;
-  end;
-
   TLegacyDrivers = Array[0..1] of TDriverRec;
-
-  TPLDrivers = record
-    Count     : Integer;
-    Items     : Array of TDriverRec;
-  end;
-
+  {
   TDeviceRec = record
     InstanceCount : Integer;
     HardwareId    : String;
@@ -85,7 +73,7 @@ type
     ErrorHint     : String;
     Driver        : TDriverRec;
   end;
-
+  }
   TConfigRec = record
     Drivers     : TPLDrivers;         {drivers from connected device}
     LegacyStore : TPLDrivers;         {legacy drivers installed in driver store}
@@ -124,33 +112,20 @@ type
   end;
 
 var
-  GCmdExe: String;                  {full pathname to system cmd}
-  GPnpExe: String;                  {full pathname to system pnputil}
   GUpdaterExe: String;              {full pathname to installer updater}
   GConfig: TConfigRec;              {contains driver and status data}
   GUpdate: TUpdateRec;              {contains data from the update}
   GFlags: TFlagsRec;                {contains runtime flags}
-  GTmpDir: String;                  {the temp directory that Inno uses}
-  GStdOut: String;                  {the temp file used to capture stdout}
   GExportDir: String;               {folder to export to in temp directory}
   GPages: TCustomPages;             {group of custom pages}
   GStartPage: TStartPage;           {contains Start page controls}
   GStatusPage: TStatusPage;         {contains Status page controls}
 
 const
-  LF = #13#10;
-  SP = #32;
-
   APP_NAME = '{#AppName}';
   ACTION_INSTALL = 1;
   ACTION_UNINSTALL = 2;
 
-  DRIVER_INF = 'ser2pl.inf';
-  LEGACY_HXA = '3.3.11.152';
-  LEGACY_TAB = '3.8.36.2';
-  MIN_DRIVER = '3.8.36.0';
-
-  PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
   UPDATER_EXE = '{#PnpUpdaterExe}';
 
   DEVICE_ERROR_NONE = 0;
@@ -166,13 +141,9 @@ function ConfigInit(var Config: TConfigRec): Boolean; forward;
 function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec; forward;
 procedure ThemeInit; forward;
 
-{Config functions}
+{Driver discovery functions}
 procedure ConfigUpdate(var Config: TConfigRec); forward;
 function GetPLDrivers(var Device: TDeviceRec): TPLDrivers; forward;
-function GetPLInstance(PnpOutput: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
-function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString; forward;
-function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers; forward;
-function IsMatchingInstance(InstanceLine: String; var HardwareId: String): Boolean; forward;
 procedure ItemizeDrivers(Drivers: TPLDrivers; Matched: Boolean; var Config: TConfigRec); forward;
 procedure SortDrivers(var Drivers: TPLDrivers); forward;
 
@@ -194,38 +165,24 @@ function IsExpectedDescription(Description: String): Boolean; forward;
 function HasComPort(Description: String): Boolean; forward;
 function MultiDevice(Config: TConfigRec): Boolean; forward;
 function NoDevice(Config: TConfigRec): Boolean; forward;
-procedure SetDeviceValidity(var Device: TDeviceRec); forward;
+procedure SetDeviceValidity(Instances: TPLInstances; var Device: TDeviceRec); forward;
 
 {Driver utility functions}
-procedure AddToDriverList(Rec: TDriverRec; var Drivers: TPLDrivers); forward;
-procedure ClearDriverList(var Drivers: TPLDrivers); forward;
 function CompareVersion(Driver1, Driver2: TDriverRec): Integer; forward;
 procedure DebugDriver(Message: String; Driver: TDriverRec); forward;
 procedure DebugPLDrivers(Drivers: TPLDrivers); forward;
 function FormatDriverDateAndVersion(Driver: TDriverRec; ForDisplay: Boolean): String; forward;
-function GetDriverDateAndVersion(Data: String; var DriverRec: TDriverRec): Boolean; forward;
 procedure InitDriverRec(var Rec: TDriverRec); forward;
 function IsDisplayedDriver(Driver1, Driver2: TDriverRec): Boolean; forward;
 function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean; forward;
 
 {Exec functions}
-function ExecPnp(Params: String): Boolean; forward;
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
 function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
-function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
 function ExecUpdater(HardwareId, InfPath: String): Boolean; forward;
 
 {Common functions}
-procedure AddText(var Existing: String; Value: String); forward;
-procedure AddTo(var Existing: String; Separator, Value: String); forward;
-procedure Debug(Message: String); forward;
-procedure DebugExecBegin(Exe, Params: String); forward;
-procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
-function IsEmpty(const Value: String): Boolean; forward;
-function NotEmpty(const Value: String): Boolean; forward;
 procedure ShowErrorMessage(Message: String); forward;
-function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 {Custom page functions}
 function FinishPageCreate(Id: Integer): TWizardPage; forward;
@@ -243,20 +200,16 @@ procedure CreateCurrentDriver(Page: TWizardPage); forward;
 function GetBase(Control: TWinControl): Integer; forward;
 procedure SetCurrentDriver(Page: TWizardPage; Config: TConfigRec); forward;
 
-#include "escape.iss"
-
 function InitializeSetup(): Boolean;
 var
   S: String;
 
 begin
 
-  GCmdExe := ExpandConstant('{cmd}');
-  GPnpExe := ExpandConstant('{sys}') + '\pnputil.exe';
-  GTmpDir := ExpandConstant('{tmp}');
-  GExportDir := GTmpDir + '\export';
-  GStdOut := GTmpDir + '\stdout.txt';
-  GUpdaterExe := GTmpDir + '\' + UPDATER_EXE;
+  InitCommon();
+
+  GExportDir := GBase.TmpDir + '\export';
+  GUpdaterExe := GBase.TmpDir + '\' + UPDATER_EXE;
 
   {Extract our temp files to installer directory}
   #ifdef DriverPath
@@ -352,7 +305,7 @@ var
 begin
 
   Result := False;
-  DriverPath := GTmpDir + '\drivers';
+  DriverPath := GBase.TmpDir + '\drivers';
 
   {Legacy HXA}
   Package := GetLegacyPackage(DriverPath, LEGACY_HXA, Exists, Error);
@@ -430,7 +383,7 @@ begin
 end;
 
 
-{*************** Config functions ***************}
+{*************** Driver discovery functions ***************}
 
 procedure ConfigUpdate(var Config: TConfigRec);
 var
@@ -479,226 +432,33 @@ end;
 function GetPLDrivers(var Device: TDeviceRec): TPLDrivers;
 var
   Output: TArrayOfString;
-  Instance: TArrayOfString;
-  Drivers: TArrayOfString;
+  Instances: TPLInstances;
 
 begin
 
   Debug('Seaching for a connected PL2303 device');
 
-  if not ExecPnpEnumDevices(Output) then
+  if not ExecPnpEnumDevices(True, Output) then
     Exit;
 
-  Instance := GetPLInstance(Output, Device);
+  Instances := GetPLInstances(Output);
 
-  if Device.InstanceCount <> 1 then
-    SetDeviceValidity(Device)
+  if Instances.Count <> 1 then
+  begin
+
+    if Instances.Count > 1 then
+      Debug('More than one device is connected');
+
+    SetDeviceValidity(Instances, Device);
+  end
   else
   begin
-    Drivers := GetPLInstanceData(Instance, Device);
-    SetDeviceValidity(Device);
-    Result := GetPLMatchingDrivers(Drivers, Device);
+    ParsePLInstances(Instances);
+    SetDeviceValidity(Instances, Device);
+    Result := Instances.Items[0].Drivers;
   end;
 
   DebugPLDrivers(Result);
-
-end;
-
-function GetPLInstance(PnpOutput: TArrayOfString; var Device: TDeviceRec): TArrayOfString;
-var
-  Count: Integer;
-  Index: Integer;
-  I: Integer;
-  IsMatching: Boolean;
-  Line: String;
-
-begin
-
-  Device.InstanceCount := 0;
-  Count := GetArrayLength(PnpOutput);
-  SetArrayLength(Result, Count);
-  Index := 0;
-  IsMatching := False;
-
-  for I := 0 to Count - 1 do
-  begin
-    Line := Trim(PnpOutput[I]);
-
-    if Pos('Instance ID:', Line) = 1 then
-    begin
-
-      IsMatching := IsMatchingInstance(Line, Device.HardwareId);
-
-      if IsMatching then
-      begin
-        Inc(Device.InstanceCount);
-
-        if Device.InstanceCount > 1 then
-        begin
-          {No drivers will be listed}
-          Debug('More than one device is connected');
-          Break;
-        end;
-
-      end;
-    end;
-
-    if IsMatching then
-    begin
-      Result[Index] := Line;
-      Inc(Index);
-    end;
-
-  end;
-
-  SetArrayLength(Result, Index);
-
-end;
-
-function GetPLInstanceData(Instance: TArrayOfString; var Device: TDeviceRec): TArrayOfString;
-var
-  Count: Integer;
-  I: Integer;
-  Line: String;
-  Index: Integer;
-  Start: Integer;
-  Description: String;
-  Name: String;
-
-begin
-
-  Count := GetArrayLength(Instance);
-  SetArrayLength(Result, Count);
-
-  Description := 'Device Description:';
-  Name := 'Driver Name:';
-
-  {Parse out device data up to Matching Drivers key}
-  for I := 0 to Count - 1 do
-  begin
-    Index := I;
-    Line := Trim(Instance[I]);
-
-    if Pos(Description, Line) = 1 then
-    begin
-      Start := Length(Description) + 1;
-      Device.Description := Trim(Copy(Line, Start, MaxInt));
-      Continue;
-    end;
-
-    if Pos(Name, Line) = 1 then
-    begin
-      Start := Length(Name) + 1;
-      Device.Driver.OemInf := Trim(Copy(Line, Start, MaxInt));
-      Continue;
-    end;
-
-    if Pos('Matching Drivers:', Line) = 1 then
-    begin
-      Inc(Index);
-      Break;
-    end;
-
-  end;
-
-  Start := Index;
-  Index := 0;
-
-  {Add Matching Drivers lines}
-  for I := Start to Count - 1 do
-  begin
-    Result[Index] := Trim(Instance[I]);
-    Inc(Index);
-  end;
-
-  SetArrayLength(Result, Index);
-
-end;
-
-function GetPLMatchingDrivers(Drivers: TArrayOfString; var Device: TDeviceRec): TPLDrivers;
-var
-  Count: Integer;
-  I: Integer;
-  Values: TArrayOfString;
-  Key: String;
-  Value: String;
-  ExpectedKey: String;
-  DriverRec: TDriverRec;
-
-begin
-
-  Count := GetArrayLength(Drivers);
-  DriverRec.Exists := True;
-  ExpectedKey := 'Driver Name';
-
-  for I := 0 to Count - 1 do
-  begin
-    Values := SplitString(Trim(Drivers[I]), ':');
-
-    if GetArrayLength(Values) <> 2 then
-      Continue;
-
-    Key := Trim(Values[0]);
-    Value := Trim(Values[1]);
-
-    if Key <> ExpectedKey then
-      Continue;
-
-    if Key = 'Driver Name' then
-    begin
-      DriverRec.OemInf := Value;
-      ExpectedKey := 'Original Name';
-      Continue;
-    end;
-
-    if Key = 'Original Name' then
-    begin
-      DriverRec.OriginalInf := Value;
-      ExpectedKey := 'Driver Version';
-      Continue;
-    end;
-
-    if Key = 'Driver Version' then
-    begin
-      GetDriverDateAndVersion(Value, DriverRec);
-      AddToDriverList(DriverRec, Result);
-
-      {See if this is the installed driver}
-      if DriverRec.OemInf = Device.Driver.OemInf then
-        Device.Driver := DriverRec;
-
-      ExpectedKey := 'Driver Name';
-    end;
-  end;
-
-end;
-
-function IsMatchingInstance(InstanceLine: String; var HardwareId: String): Boolean;
-var
-  Value: String;
-  Ids: Array[0..1] of String;
-  I: Integer;
-
-begin
-
-  Result := False;
-  Value := Uppercase(InstanceLine);
-
-  {Make sure we get relevant PL2303 ids}
-  Ids[0] := 'USB\VID_067B&PID_2303';
-  Ids[1] := 'USB\VID_067B&PID_2304';
-
-  for I := Low(Ids) to High(Ids) do
-  begin
-
-    if Pos(Ids[I], Value) <> 0 then
-    begin
-      HardwareId := Ids[I];
-      Result := True;
-      Break;
-    end;
-
-  end;
 
 end;
 
@@ -1228,8 +988,9 @@ begin
   Result := Config.Device.InstanceCount = 0;
 end;
 
-procedure SetDeviceValidity(var Device: TDeviceRec);
+procedure SetDeviceValidity(Instances: TPLInstances; var Device: TDeviceRec);
 var
+  Instance: TInstanceRec;
   Phrases: Array[0..3] of String;
   I: Integer;
   Parts: TArrayOfString;
@@ -1237,9 +998,17 @@ var
 
 begin
 
+  Device.InstanceCount := Instances.Count;
+
   {No device or multi device, so empty record}
   if Device.InstanceCount <> 1 then
     Exit;
+
+  {Tranfers Instances data}
+  Instance := Instances.Items[0];
+  Device.HardwareId := Instance.HardwareId;
+  Device.Description := Instance.Description;
+  Device.Driver := Instance.Driver;
 
   {Everthing okay}
   if IsExpectedDescription(Device.Description) then
@@ -1290,21 +1059,6 @@ begin
 
 end;
 
-{*************** Driver utility functions ***************}
-
-procedure AddToDriverList(Rec: TDriverRec; var Drivers: TPLDrivers);
-begin
-  SetArrayLength(Drivers.Items, Drivers.Count + 1);
-  Drivers.Items[Drivers.Count] := Rec;
-  Inc(Drivers.Count);
-end;
-
-procedure ClearDriverList(var Drivers: TPLDrivers);
-begin
-  Drivers.Count := 0;
-  SetArrayLength(Drivers.Items, 0);
-end;
-
 function CompareVersion(Driver1, Driver2: TDriverRec): Integer;
 begin
   Result := ComparePackedVersion(Driver1.PackedVersion, Driver2.PackedVersion);
@@ -1344,49 +1098,22 @@ begin
 
 end;
 
-function GetDriverDateAndVersion(Data: String; var DriverRec: TDriverRec): Boolean;
-var
-  List: TArrayOfString;
-  Separator: String;
-  Date: String;
-  Version: String;
-  PackedVersion: Int64;
-
+function FormatDriverDateAndVersion(Driver: TDriverRec; ForDisplay: Boolean): String;
 begin
 
-  DriverRec.Date := '';
-  DriverRec.Version := '0.0.0.0';
-  DriverRec.PackedVersion := 0;
-
-  {Inf files use a comma separator, pnputil output uses a space}
-  if Pos(',', Data) <> 0 then
-    Separator := ','
-  else
-    Separator := ' ';
-
-  List := SplitString(Data, Separator);
-  Result := GetArrayLength(List) = 2;
-
-  if not Result then
-    Exit;
-
-  {Date is formated mm/dd/yyyy}
-  Date := Trim(List[0]);
-  Version := Trim(List[1]);
-  Result := StrToVersion(Version, PackedVersion);
-
-  if not Result then
-    Exit;
-
-  DriverRec.Version := Version;
-  List := SplitString(Date, '/');
-  Result := GetArrayLength(List) = 3;
-
-  if Result then
+  if not ForDisplay then
   begin
-    DriverRec.Date := Format('%s-%s-%s', [List[1], List[0], List[2]]);
-    DriverRec.Version := Version;
-    DriverRec.PackedVersion := PackedVersion;
+    if Driver.PackedVersion = 0 then
+      Result := Format('%s (unknown)', [Driver.Version])
+    else
+      Result := Format('%s (%s)', [Driver.Version, Driver.Date]);
+  end
+  else
+  begin
+    if Driver.PackedVersion = 0 then
+      Result := 'Not available'
+    else
+      Result := Format('%s  %s', [Driver.Version, Driver.Date]);
   end;
 
 end;
@@ -1434,30 +1161,6 @@ end;
 
 {*************** Exec functions ***************}
 
-function ExecPnp(Params: String): Boolean;
-var
-  ExitCode: Integer;
-
-begin
-
-  DebugExecBegin(GPnpExe, Params);
-  Result := Exec(GPnpExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-end;
-
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean;
-var
-  Params: String;
-
-begin
-
-  Params := Format('/delete-driver %s', [ArgWin(Driver.OemInf)]);
-  Result := ExecPnp(Params);
-
-end;
-
 function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean;
 var
   Params: String;
@@ -1485,35 +1188,6 @@ begin
 
 end;
 
-function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean;
-var
-  PnpParams: String;
-  Params: String;
-  ExitCode: Integer;
-
-begin
-
-  SetArrayLength(Output, 0);
-  DeleteFile(GStdOut);
-
-  AddText(PnpParams, '/enum-devices');
-  AddText(PnpParams, '/class');
-  AddText(PnpParams, PORTSCLASS);
-  AddText(PnpParams, '/drivers');
-  AddText(PnpParams, '/connected');
-
-  Params := Format('/c "%s %s >%s"', [ArgCmdModule(GPnpExe), PnpParams, ArgCmd(GStdOut)]);
-
-  DebugExecBegin(GCmdExe, Params);
-  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  DebugExecEnd(Result, ExitCode);
-  Result := Result and (ExitCode = 0);
-
-  if Result then
-    LoadStringsFromFile(GStdOut, Output);
-
-end;
-
 function ExecUpdater(HardwareId, InfPath: String): Boolean;
 var
   Params: String;
@@ -1525,7 +1199,7 @@ begin
   AddText(Params, ArgWin(InfPath));
 
   DebugExecBegin(GUpdaterExe, Params);
-  Result := Exec(GUpdaterExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  Result := Exec(GUpdaterExe, Params, GBase.TmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
   DebugExecEnd(Result, ExitCode);
   Result := Result and (ExitCode = 0);
 
@@ -1533,51 +1207,6 @@ end;
 
 
 {*************** Common functions ***************}
-
-{Adds a value to an existing string, separated with a space}
-procedure AddText(var Existing: String; Value: String);
-begin
-  AddTo(Existing, SP, Value);
-end;
-
-{Adds a value to an existing string, separated by Separator}
-procedure AddTo(var Existing: String; Separator, Value: String);
-begin
-
-  if NotEmpty(Existing) then
-  begin
-    Existing := TrimRight(Existing);
-    Existing := Existing + Separator;
-  end;
-
-  Existing := Existing + Trim(Value);
-end;
-
-procedure Debug(Message: String);
-begin
-  Log('$ ' + Message);
-end;
-
-procedure DebugExecBegin(Exe, Params: String);
-begin
-  Debug('-- Execute File --');
-  Debug(Format('Running %s %s', [ArgWin(Exe), Params]));
-end;
-
-procedure DebugExecEnd(Res: Boolean; ExitCode: Integer);
-var
-  Msg: String;
-
-begin
-
-  if Res then
-    Msg := Format('Exit code [%d]', [ExitCode])
-  else
-    Msg := Format('Error: %s', [SysErrorMessage(DLLGetLastError)]);
-
-  Debug(Msg);
-
-end;
 
 procedure DebugPageName(Id: Integer);
 var
@@ -1605,40 +1234,6 @@ begin
 
 end;
 
-function FormatDriverDateAndVersion(Driver: TDriverRec; ForDisplay: Boolean): String;
-begin
-
-  if not ForDisplay then
-  begin
-    if Driver.PackedVersion = 0 then
-      Result := Format('%s (unknown)', [Driver.Version])
-    else
-      Result := Format('%s (%s)', [Driver.Version, Driver.Date]);
-  end
-  else
-  begin
-    if Driver.PackedVersion = 0 then
-      Result := 'Not available'
-    else
-      Result := Format('%s  %s', [Driver.Version, Driver.Date]);
-  end;
-
-end;
-
-
-{Returns true if a string is empty}
-function IsEmpty(const Value: String): Boolean;
-begin
-  Result := Value = '';
-end;
-
-
-{Returns true if a string is not empty}
-function NotEmpty(const Value: String): Boolean;
-begin
-  Result := Value <> '';
-end;
-
 procedure ShowErrorMessage(Message: String);
 var
   Params: String;
@@ -1656,47 +1251,6 @@ begin
 
   if WizardForm <> nil then
     WizardForm.NextButton.Enabled := not WizardSilent;
-
-end;
-
-function SplitString(Value, Separator: String): TArrayOfString;
-var
-  Index: Integer;
-  Count: Integer;
-  Next: Integer;
-
-begin
-
-  Count := 0;
-  Next := 0;
-
-  repeat
-
-    Index := Pos(Separator, Value);
-
-    if Next = Count then
-    begin
-      Count := Count + 10;
-      SetArrayLength(Result, Count);
-    end;
-
-    if Index > 0 then
-    begin
-      Result[Next] := Copy(Value, 1, Index - 1);
-      Value := Copy(Value, Index + 1, Length(Value));
-    end
-    else
-    begin
-      Result[Next] := Value;
-      Value := '';
-    end;
-
-    Inc(Next);
-
-  until Length(Value) = 0;
-
-  if Next < Count then
-    SetArrayLength(Result, Next);
 
 end;
 
@@ -2041,6 +1595,7 @@ begin
   GStatusPage.Info.Caption := S;
 
 end;
+
 
 {*************** Custom page utility functions ***************}
 

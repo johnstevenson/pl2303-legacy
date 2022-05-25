@@ -79,7 +79,8 @@ function GetBase(Control: TWinControl): Integer; forward;
 function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure StartPageRunClick(Sender: TObject); forward;
 
-#include "../escape.iss"
+#include "..\shared\escape.iss"
+#include "shared\common.iss"
 
 function InitializeSetup(): Boolean;
 var
@@ -112,6 +113,12 @@ begin
   Confirm := CurPageID <> GStartPage.ID;
 end;
 
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  InitCommon();
+end;
+
 {Sets the font color to dark grey}
 procedure ThemeInit();
 var
@@ -120,7 +127,7 @@ var
 begin
 
   {Hex 303030}
-  Color := (48 shl 16) + (48 shl 8) + 48;
+  Color := (30 shl 16) + (30 shl 8) + 30;
   WizardForm.Font.Color := Color;
 
 end;
