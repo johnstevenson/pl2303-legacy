@@ -139,7 +139,7 @@ var
 
 const
   LF = #13#10;
-  LF2 = LF + LF;
+  SP = #32;
 
   APP_NAME = '{#AppName}';
   ACTION_INSTALL = 1;
@@ -216,10 +216,8 @@ function ExecPnpEnumDevices(var Output: TArrayOfString): Boolean; forward;
 function ExecUpdater(HardwareId, InfPath: String): Boolean; forward;
 
 {Common functions}
-procedure AddLine(var Existing: String; Value: String); forward;
-procedure AddPara(var Existing: String; Value: String); forward;
-procedure AddParam(var Params: String; Value: String); forward;
-procedure AddStr(var Existing: String; Value: String); forward;
+procedure AddText(var Existing: String; Value: String); forward;
+procedure AddTo(var Existing: String; Separator, Value: String); forward;
 procedure Debug(Message: String); forward;
 procedure DebugExecBegin(Exe, Params: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
@@ -278,7 +276,7 @@ begin
   if not Result then
   begin
     S := Format('Unable to start %s.', [APP_NAME]);
-    AddPara(S, 'Package configuration error.');
+    AddTo(S, LF + LF, 'Package configuration error.');
     ShowErrorMessage(S);
   end;
 
@@ -457,7 +455,7 @@ begin
   if IsSameVersion(Device.Driver, Driver) then
   begin
     Matched := True;
-    AddStr(Driver.DisplayName, ' (current driver)');
+    AddText(Driver.DisplayName, '(current driver)');
   end;
 
   AddToDriverList(Driver, Config.Drivers);
@@ -468,7 +466,7 @@ begin
   if not Matched and IsSameVersion(Device.Driver, Driver) then
   begin
     Matched := True;
-    AddStr(Driver.DisplayName, ' (current driver)');
+    AddText(Driver.DisplayName, '(current driver)');
   end;
 
   AddToDriverList(Driver, Config.Drivers);
@@ -722,7 +720,7 @@ begin
       if not Matched then
       begin
         Matched := True;
-        AddStr(Driver.DisplayName, ' (current driver)');
+        AddText(Driver.DisplayName, '(current driver)');
 
         {Add to main drivers}
         AddToDriverList(Driver, Config.Drivers);
@@ -966,24 +964,24 @@ begin
   if Status <> UPDATE_SUCCESS then
   begin
 
-    GUpdate.Message := 'Error: ';
+    GUpdate.Message := 'Error:';
 
     if MultiDevice(Config) then
-      AddStr(GUpdate.Message, 'Multiple devices')
+      AddText(GUpdate.Message, 'Multiple devices')
     else if NoDevice(Config) then
-      AddStr(GUpdate.Message, 'Not connected')
+      AddText(GUpdate.Message, 'Not connected')
     else
     begin
 
       if not Driver.Exists then
-        AddStr(GUpdate.Message, 'No driver selected')
+        AddText(GUpdate.Message, 'No driver selected')
       else
       begin
 
         if Status = UPDATE_UNRECOGNIZED then
-          AddStr(GUpdate.Message, 'Unrecognized hardware')
+          AddText(GUpdate.Message, 'Unrecognized hardware')
         else
-          AddStr(GUpdate.Message, 'Unable to install the selected driver');
+          AddText(GUpdate.Message, 'Unable to install the selected driver');
 
       end;
 
@@ -1279,7 +1277,7 @@ begin
     PL2303TB DO NOT SUPPORT WINDOWS 11 OR LATER, PLEASE CONTACT YOUR SUPPLIER.
     Please install corresponding PL2303 driver to support Windows 11 and further OS.}
 
-  Parts := SplitString(Device.Description, #32);
+  Parts := SplitString(Device.Description, SP);
 
   if GetArrayLength(Parts) > 1 then
   begin
@@ -1498,11 +1496,11 @@ begin
   SetArrayLength(Output, 0);
   DeleteFile(GStdOut);
 
-  AddParam(PnpParams, '/enum-devices');
-  AddParam(PnpParams, '/class');
-  AddParam(PnpParams, PORTSCLASS);
-  AddParam(PnpParams, '/drivers');
-  AddParam(PnpParams, '/connected');
+  AddText(PnpParams, '/enum-devices');
+  AddText(PnpParams, '/class');
+  AddText(PnpParams, PORTSCLASS);
+  AddText(PnpParams, '/drivers');
+  AddText(PnpParams, '/connected');
 
   Params := Format('/c "%s %s >%s"', [ArgCmdModule(GPnpExe), PnpParams, ArgCmd(GStdOut)]);
 
@@ -1524,7 +1522,7 @@ var
 begin
 
   Params := ArgWin(HardwareId);
-  AddParam(Params, ArgWin(InfPath));
+  AddText(Params, ArgWin(InfPath));
 
   DebugExecBegin(GUpdaterExe, Params);
   Result := Exec(GUpdaterExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
@@ -1536,54 +1534,23 @@ end;
 
 {*************** Common functions ***************}
 
-{Adds a value to an existing string, separated with a linefeed.
-All existing trailing space and linefeeds are removed first}
-procedure AddLine(var Existing: String; Value: String);
+{Adds a value to an existing string, separated with a space}
+procedure AddText(var Existing: String; Value: String);
+begin
+  AddTo(Existing, SP, Value);
+end;
+
+{Adds a value to an existing string, separated by Separator}
+procedure AddTo(var Existing: String; Separator, Value: String);
 begin
 
   if NotEmpty(Existing) then
   begin
     Existing := TrimRight(Existing);
-    Existing := Existing + LF;
+    Existing := Existing + Separator;
   end;
 
-  AddStr(Existing, Value);
-
-end;
-
-{Adds a value to an existing string, separated with two linefeeds.
-All existing trailing space and linefeeds are removed first}
-procedure AddPara(var Existing: String; Value: String);
-begin
-
-  if NotEmpty(Existing) then
-  begin
-    Existing := TrimRight(Existing);
-    Existing := Existing + LF2;
-  end;
-
-  AddStr(Existing, Value);
-
-end;
-
-{Adds a value separated by a space to a string of params. Note that the
-value is expected to be escaped}
-procedure AddParam(var Params: String; Value: String);
-begin
-
-  if NotEmpty(Params) then
-  begin
-    Params := TrimRight(Params);
-    Params := Params + #32;
-  end;
-
-  AddStr(Params, Trim(Value));
-
-end;
-
-procedure AddStr(var Existing: String; Value: String);
-begin
-  Existing := Existing + Value;
+  Existing := Existing + Trim(Value);
 end;
 
 procedure Debug(Message: String);
@@ -1680,7 +1647,7 @@ var
 begin
 
   Params := GetCmdTail;
-  Suppressible := Pos('/SUPPRESSMSGBOXES ', Uppercase(Params + #32)) <> 0;
+  Suppressible := Pos('/SUPPRESSMSGBOXES ', Uppercase(Params + SP)) <> 0;
 
   if WizardSilent and not Suppressible then
     Debug(Message)
@@ -1793,7 +1760,7 @@ begin
 
   Title := 'PL2303 legacy USB drivers';
   Text := 'For devices that use unsupported Prolific microchips. If the current driver';
-  AddStr(Text, ' is not shown below, connect your device and click Scan Drivers.');
+  AddText(Text, 'is not shown below, connect your device and click Scan Drivers.');
 
   Result := CreateCustomPage(Id, Title, Text);
   CreateCurrentDriver(Result);
@@ -1985,7 +1952,7 @@ begin
   if MultiDevice(Config) then
   begin
      Result := 'Only one device should be connected to update a PL2303 driver.'
-     AddStr(Result, ' Please reconnect with a single device, then click Back to retry.');
+     AddText(Result, 'Please reconnect with a single device, then click Back to retry.');
      Exit;
   end;
 
@@ -1999,7 +1966,7 @@ begin
     else
       Result := 'A device must be connected to update the selected driver.';
 
-    AddStr(Result, ' Please connect your device, then click Back to retry.');
+    AddText(Result, 'Please connect your device, then click Back to retry.');
     Exit;
 
   end;
@@ -2013,7 +1980,7 @@ begin
     else
     begin
       Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-      AddStr(Result, ' use Windows Device Manager to find a PL2303 driver.');
+      AddText(Result, 'use Windows Device Manager to find a PL2303 driver.');
     end;
 
     Exit;
@@ -2022,7 +1989,7 @@ begin
 
   {The update itself failed}
   Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-  AddStr(Result, ' you may need to restart your computer and run this program again.');
+  AddText(Result, 'you may need to restart your computer and run this program again.');
 
 end;
 
@@ -2050,7 +2017,7 @@ begin
         Header := 'Suggestions';
 
         S := 'The driver does not recognize the microchip in your device.';
-        AddStr(S, ' Click Back to retry with a different device, or contact your device supplier.');
+        AddText(S, 'Click Back to retry with a different device, or contact your device supplier.');
       end;
   else
     begin
@@ -2059,12 +2026,12 @@ begin
       if DeviceHasError(Config.Device) then
       begin
         S := 'The installed driver will not work with your device.';
-        AddStr(S, ' Click Back to retry with a different driver.');
+        AddText(S, 'Click Back to retry with a different driver.');
       end
       else
       begin
         S := 'You will need to run this program again if Windows Update changes your driver,';
-        AddStr(S, ' or if you use other devices that require a different PL2303 driver.');
+        AddText(S, 'or if you use other devices that require a different PL2303 driver.');
       end;
 
     end;
