@@ -1,13 +1,13 @@
 [Code]
 type
   TDriverRec = record
-    OemInf        : String;
-    OriginalInf   : String;
-    Version       : String;
-    PackedVersion : Int64;
-    Date          : String;
-    DisplayName   : String;
-    Exists        : Boolean;
+    OemInf        : String;         {The Driver Name value}
+    OriginalInf   : String;         {The Original Name value or full path to legacy driver}
+    Version       : String;         {Driver version parsed from Driver Version}
+    PackedVersion : Int64;          {Inno version format for comparisons}
+    Date          : String;         {Driver release date parsed from Driver Version}
+    DisplayName   : String;         {Simple description to show the user}
+    Exists        : Boolean;        {Whether a legacy driver exists}
   end;
 
   TPLDrivers = record
@@ -16,26 +16,17 @@ type
   end;
 
   TInstanceRec = record
-    HardwareId    : String;
-    Description   : String;
-    OemInf        : String;
-    Driver        : TDriverRec;
-    Drivers       : TPLDrivers;
-    Text          : TArrayOfString;
+    HardwareId    : String;         {The Hardware Id from first part of Instance ID}
+    Description   : String;         {The Device Description value}
+    OemInf        : String;         {The Driver Name value}
+    Driver        : TDriverRec;     {The installed driver for the device}
+    Drivers       : TPLDrivers;     {Values from Matching Driver lines}
+    Text          : TArrayOfString; {Temporary fied to store lines while processing}
   end;
 
   TPLInstances = record
     Count     : Integer;
     Items     : Array of TInstanceRec;
-  end;
-
-  TDeviceRec = record
-    InstanceCount : Integer;
-    HardwareId    : String;
-    Description   : String;
-    ErrorStatus   : Integer;
-    ErrorHint     : String;
-    Driver        : TDriverRec;
   end;
 
   TBaseRec = record
@@ -59,8 +50,9 @@ const
 
   PORTSCLASS = '{4d36e978-e325-11ce-bfc1-08002be10318}';
 
-{Init function}
+{Init functions}
 procedure InitCommon; forward;
+procedure ThemeInit; forward;
 
 {Driver discovery functions}
 function GetPLInstances(PnpOutput: TArrayOfString): TPLInstances; forward;
@@ -73,10 +65,11 @@ procedure ProcessPLMatchingDrivers(var Instance: TInstanceRec); forward;
 procedure AddToDriverList(Rec: TDriverRec; var Drivers: TPLDrivers); forward;
 procedure ClearDriverList(var Drivers: TPLDrivers); forward;
 function GetDriverDateAndVersion(Data: String; var DriverRec: TDriverRec): Boolean; forward;
+function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean; forward;
 
 {Exec functions}
 function ExecPnp(Params: String): Boolean; forward;
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean; forward;
+function ExecPnpDeleteDriver(Driver: TDriverRec; Uninstall: Boolean): Boolean; forward;
 function ExecPnpEnumDevices(Connected: Boolean; var Output: TArrayOfString): Boolean; forward;
 
 {Common functions}
@@ -91,7 +84,7 @@ function NotEmpty(const Value: String): Boolean; forward;
 function SplitString(Value, Separator: String): TArrayOfString; forward;
 
 
-{Init function}
+{*************** Init functions ***************}
 
 procedure InitCommon;
 begin
@@ -99,6 +92,23 @@ begin
   GBase.PnpExe := ExpandConstant('{sys}') + '\pnputil.exe';
   GBase.TmpDir := ExpandConstant('{tmp}');
   GBase.StdOut := GBase.TmpDir + '\stdout.txt';
+end;
+
+{Sets the font color to dark grey}
+procedure ThemeInit;
+var
+  Color: Integer;
+
+begin
+
+  {Hex 303030}
+  Color := (30 shl 16) + (30 shl 8) + 30;
+
+  if not IsUninstaller then
+    WizardForm.Font.Color := Color
+  else
+    UninstallProgressForm.Font.Color := Color;
+
 end;
 
 
@@ -190,8 +200,8 @@ begin
 
 end;
 
-{Parses text to get the Description and OemInf values
-then replaces the text with the MatchingDriver lines}
+{Parses text to get the Device Description and Driver Name
+values then replaces the text with the MatchingDriver lines}
 procedure ProcessPLInstance(var Instance: TInstanceRec);
 var
   Count: Integer;
@@ -199,14 +209,14 @@ var
   Line: String;
   Start: Integer;
   Description: String;
-  Name: String;
+  DriverName: String;
   Drivers: TArrayOfString;
 
 begin
 
   Count := GetArrayLength(Instance.Text);
   Description := 'Device Description:';
-  Name := 'Driver Name:';
+  DriverName := 'Driver Name:';
   I := 0;
 
   while I < Count do
@@ -221,9 +231,9 @@ begin
       Continue;
     end;
 
-    if Pos(Name, Line) = 1 then
+    if Pos(DriverName, Line) = 1 then
     begin
-      Start := Length(Name) + 1;
+      Start := Length(DriverName) + 1;
       Instance.OemInf := Trim(Copy(Line, Start, MaxInt));
       Continue;
     end;
@@ -234,8 +244,8 @@ begin
       while I < Count do
       begin
         Line := Trim(Instance.Text[I]);
-        AddToArray(Drivers, Line);
         Inc(I);
+        AddToArray(Drivers, Line);
       end;
     end;
 
@@ -369,6 +379,19 @@ begin
 
 end;
 
+function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean;
+begin
+
+  if (Driver1.PackedVersion = 0) or (Driver2.PackedVersion = 0) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := SamePackedVersion(Driver1.PackedVersion, Driver2.PackedVersion);
+
+end;
+
 
 {*************** Exec functions ***************}
 
@@ -385,13 +408,18 @@ begin
 
 end;
 
-function ExecPnpDeleteDriver(Driver: TDriverRec): Boolean;
+function ExecPnpDeleteDriver(Driver: TDriverRec; Uninstall: Boolean): Boolean;
 var
   Params: String;
 
 begin
 
-  Params := Format('/delete-driver %s', [ArgWin(Driver.OemInf)]);
+  AddText(Params, '/delete-driver');
+  AddText(Params, Driver.OemInf);
+
+  if Uninstall then
+    AddText(Params, '/uninstall /force');
+
   Result := ExecPnp(Params);
 
 end;
@@ -411,7 +439,9 @@ begin
   AddText(PnpParams, '/class');
   AddText(PnpParams, PORTSCLASS);
   AddText(PnpParams, '/drivers');
-  AddText(PnpParams, '/connected');
+
+  if Connected then
+    AddText(PnpParams, '/connected');
 
   Params := Format('/c "%s %s >%s"', [ArgCmdModule(GBase.PnpExe), PnpParams, ArgCmd(GBase.StdOut)]);
 

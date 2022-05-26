@@ -59,6 +59,10 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram, {#AppName}}"; 
 SetupAppTitle=Setup - {#AppName}
 SetupWindowTitle=Setup - {#AppName} {#AppVersion}
 
+#include "..\shared\escape.iss"
+#include "..\shared\common.iss"
+#include "userdrivers.iss"
+
 [Code]
 type
   TStartPage = record
@@ -74,13 +78,9 @@ const
   APP_NAME = '{#AppName}';
   APP_EXE_NAME = '{#AppExeName}';
 
-procedure ThemeInit; forward;
 function GetBase(Control: TWinControl): Integer; forward;
 function StartPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure StartPageRunClick(Sender: TObject); forward;
-
-#include "..\shared\escape.iss"
-#include "shared\common.iss"
 
 function InitializeSetup(): Boolean;
 var
@@ -119,16 +119,16 @@ begin
   InitCommon();
 end;
 
-{Sets the font color to dark grey}
-procedure ThemeInit();
-var
-  Color: Integer;
+procedure InitializeUninstallProgressForm();
+begin
+  ThemeInit();
+end;
 
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
 
-  {Hex 303030}
-  Color := (30 shl 16) + (30 shl 8) + 30;
-  WizardForm.Font.Color := Color;
+  if CurUninstallStep = usUninstall then
+    UserDriversDelete;
 
 end;
 

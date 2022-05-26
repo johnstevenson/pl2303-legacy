@@ -1,4 +1,5 @@
-# [Unreleased]
+## [Unreleased]
+  * Added: Option to remove legacy drivers when uninstalling the program.
 
 ## [0.8.0] - 2022-05-21
   * Initial public release

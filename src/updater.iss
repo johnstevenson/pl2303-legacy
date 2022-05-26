@@ -64,21 +64,21 @@ SetupWindowTitle={#AppName} {#AppVersion}
 [Code]
 type
   TLegacyDrivers = Array[0..1] of TDriverRec;
-  {
+
   TDeviceRec = record
-    InstanceCount : Integer;
-    HardwareId    : String;
-    Description   : String;
-    ErrorStatus   : Integer;
-    ErrorHint     : String;
-    Driver        : TDriverRec;
+    InstanceCount : Integer;        {The number of connected devices}
+    HardwareId    : String;         {The Hardware Id from first part of Instance ID}
+    Description   : String;         {The Device Description value}
+    ErrorStatus   : Integer;        {For Device Description error messages}
+    ErrorHint     : String;         {The chip indentification in Description error messages}
+    Driver        : TDriverRec;     {The installed driver for the device}
   end;
-  }
+
   TConfigRec = record
-    Drivers     : TPLDrivers;         {drivers from connected device}
-    LegacyStore : TPLDrivers;         {legacy drivers installed in driver store}
-    Packages    : TLegacyDrivers;     {legacy driver packages for installation}
-    Device      : TDeviceRec;         {the connected device}
+    Drivers     : TPLDrivers;       {drivers from connected device}
+    LegacyStore : TPLDrivers;       {legacy drivers installed in driver store}
+    Packages    : TLegacyDrivers;   {legacy driver packages for installation}
+    Device      : TDeviceRec;       {the connected device}
   end;
 
   TUpdateRec = record
@@ -139,7 +139,6 @@ const
 {Init functions}
 function ConfigInit(var Config: TConfigRec): Boolean; forward;
 function GetLegacyPackage(DriverPath, Folder: String; var Exists, Error: Boolean): TDriverRec; forward;
-procedure ThemeInit; forward;
 
 {Driver discovery functions}
 procedure ConfigUpdate(var Config: TConfigRec); forward;
@@ -174,7 +173,6 @@ procedure DebugPLDrivers(Drivers: TPLDrivers); forward;
 function FormatDriverDateAndVersion(Driver: TDriverRec; ForDisplay: Boolean): String; forward;
 procedure InitDriverRec(var Rec: TDriverRec); forward;
 function IsDisplayedDriver(Driver1, Driver2: TDriverRec): Boolean; forward;
-function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean; forward;
 
 {Exec functions}
 function ExecPnpExportDriver(Driver: TDriverRec; var OriginalInf: String): Boolean; forward;
@@ -365,20 +363,6 @@ begin
 
   if not GetDriverDateAndVersion(IniValue, Result) then
     Error := Exists;
-
-end;
-
-
-{Sets the font color to dark grey}
-procedure ThemeInit();
-var
-  Color: Integer;
-
-begin
-
-  {Hex 303030}
-  Color := (30 shl 16) + (30 shl 8) + 30;
-  WizardForm.Font.Color := Color;
 
 end;
 
@@ -706,7 +690,9 @@ begin
 
     DebugDriver('Removing legacy driver', LegacyDriver);
 
-    if not ExecPnpDeleteDriver(LegacyDriver) then
+    {The driver will only be removed if it is not registered
+    to another device}
+    if not ExecPnpDeleteDriver(LegacyDriver, False) then
       DebugDriver('Failed to remove legacy driver', LegacyDriver)
     else
       DebugDriver('Successfully removed legacy driver', LegacyDriver);
@@ -1142,19 +1128,6 @@ begin
   Result := (Driver1.OemInf = Driver2.OemInf)
     and (Driver1.OriginalInf = Driver2.OriginalInf)
     and (Driver1.Exists = Driver2.Exists);
-
-end;
-
-function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean;
-begin
-
-  if (Driver1.PackedVersion = 0) or (Driver2.PackedVersion = 0) then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  Result := SamePackedVersion(Driver1.PackedVersion, Driver2.PackedVersion);
 
 end;
 
