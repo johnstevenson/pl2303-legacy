@@ -35,9 +35,15 @@ jobs:
         run: builds\output\UpdaterSetup.exe /VERYSILENT /SUPPRESSMSGBOXES /LOG=C:\setup.txt
         shell: cmd
 
+      - name: Run Uninstall
+        run: unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /LOG=C:\uninstall.txt
+        shell: cmd
+        working-directory: "C:/Program Files/Updater"
+
       - name : Upload logs
         uses: actions/upload-artifact@v3
         with:
           path: |
             C:\updater.txt
             C:\setup.txt
+            C:\uninstall.txt
