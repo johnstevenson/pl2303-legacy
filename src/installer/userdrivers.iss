@@ -2,7 +2,7 @@
 type
   TUserDriverRec = record
     Driver    : TDriverRec;
-    Delete    : Boolean;
+    Remove    : Boolean;
   end;
 
   TUserDriverList = Array[0..1] of TUserDriverRec;
@@ -38,10 +38,13 @@ begin
   if not UserDriversSelect(List) then
     Exit;
 
-  for I := Low(List) to High(List) - 1 do
+  for I := Low(List) to High(List) do
   begin
 
-    if List[I].Delete then
+    if not List[I].Driver.Exists then
+      Continue;
+
+    if List[I].Remove then
     begin
       if ExecPnpDeleteDriver(List[I].Driver, True) then
         Action := 'Removed'
@@ -98,10 +101,10 @@ end;
 function UserDriversGetLegacy: TUserDriverList;
 begin
 
-  Result[0].Delete := True;
+  Result[0].Remove := False;
   Result[0].Driver := UserDriversInit('Legacy PL2303 HXA/XA', LEGACY_HXA);
 
-  Result[1].Delete := True;
+  Result[1].Remove := False;
   Result[1].Driver := UserDriversInit('Legacy PL2303 TA/TB', LEGACY_TAB);
 
 end;
@@ -124,6 +127,7 @@ var
   Instance: TInstanceRec;
   Driver: TDriverRec;
   Found: Boolean;
+  Text: String;
 
 begin
 
@@ -160,6 +164,13 @@ begin
 
   end;
 
+  if Result.Count = 1 then
+    Text := 'driver'
+  else
+    Text := 'drivers';
+
+  Debug(Format('Found %d PL2303 %s', [Result.Count, Text]));
+
 end;
 
 function UserDriversSelect(var List: TUserDriverList): Boolean;
@@ -184,7 +195,7 @@ begin
 
   if Count = 0 then
   begin
-    Debug('No user drivers found');
+    Debug('No legacy drivers found');
     Exit;
   end;
 
@@ -204,6 +215,8 @@ begin
       if not Driver.Exists then
         Continue;
 
+      Debug(Format('Offering %s (%s) for removal', [Driver.DisplayName, Driver.Version]));
+
       GUserForm.ListBox.AddCheckBox(Driver.DisplayName, Driver.Version, 0,
         True, True, False, False, TObject(I));
     end;
@@ -216,17 +229,17 @@ begin
     begin
 
       Index := Integer(GUserForm.ListBox.ItemObject[I]);
-      List[Index].Delete := GUserForm.ListBox.Checked[I];
+      List[Index].Remove := GUserForm.ListBox.Checked[I];
 
-      if List[Index].Delete then
+      if List[Index].Remove then
         Result := True;
 
     end;
 
     if Result then
-      Debug('User chose to delete drivers')
+      Debug('User chose to remove legacy drivers')
     else
-      Debug('User chose not to delete drivers');
+      Debug('User chose not to remove legacy drivers');
 
   finally
     GUserForm.Main.Free();

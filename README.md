@@ -32,12 +32,11 @@ Legacy drivers are provided for the following microchips:
 PL2303HXA and PL2303XA were phased out in 2012 due to counterfeit Chinese copies. Note that this
 driver will only be installed if Prolific recognizes the microchip.
 
-This driver also supports older microchips (PL2303H, PL2303HX and PL2303X). If it is not suitable *
+This driver also supports older microchips (PL2303H, PL2303HX and PL2303X). If it is not suitable
 you can try the excellent [Prolific PL-2303 Code 10 Fix][codefix] program from
-[Family Software][family], which uses an earlier driver version (3.3.2.102) from 2008.
-
-_* Earlier PL2303 drivers sometimes fail on later Windows versions (where data can be read from but
-not written to the device), depending on the methods used by the calling program._
+[Family Software][family], which uses an earlier driver version (3.3.2.102) from 2008. Older
+applications sometimes fail to write to the device, so using an earlier driver may
+solve this.
 
 ### PL2303 TA/TB
 
