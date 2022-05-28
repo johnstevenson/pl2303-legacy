@@ -149,7 +149,7 @@ procedure SortDrivers(var Drivers: TPLDrivers); forward;
 {Driver update functions}
 procedure DriverUpdate(var Config: TConfigRec); forward;
 procedure DriverUpdateRun(Driver: TDriverRec; var Config: TConfigRec); forward;
-function InstallDriver(Driver: TDriverRec; var Config: TConfigRec): Boolean; forward;
+function InstallDriver(Device: TDeviceRec; Driver: TDriverRec; var Config: TConfigRec): Boolean; forward;
 procedure RemoveLegacyDrivers(Config: TConfigRec); forward;
 procedure SetUpdateRec(Config: TConfigRec; Driver: TDriverRec; Status: Integer; SameDriver: Boolean); forward;
 function TestChip(Driver: TDriverRec; var Config: TConfigRec; var TestDevice: TDeviceRec): Boolean; forward;
@@ -546,7 +546,11 @@ begin
   Index := GStartPage.Drivers.ItemIndex;
 
   if Index <> -1 then
+  begin
     Driver := Config.Drivers.Items[Index];
+    {Get latest device/driver data}
+    ConfigUpdate(Config);
+  end;
 
   {Always skip with multiple devices because even though the update
   could work, we only parse the first instance found}
@@ -557,22 +561,19 @@ begin
     Exit;
   end;
 
-  {Note that we cannot use NoDevice here because the user may
-  have connected and not scanned, or Windows may have found
-  and installed the latest driver}
-  if not Driver.Exists then
+  {Skip if no device or no selected driver unless CI}
+  if NoDevice(Config) or not Driver.Exists then
   begin
 
-    {Skip update if not CI}
-    if GFlags.CIParam then
-      Debug('Driver not selected, using empty driver')
-    else
+    if not GFlags.CIParam then
     begin
-      Debug('Skipping update, driver not selected');
+      Debug('Skipping update, no device or driver not selected');
       SetUpdateRec(Config, Driver, UPDATE_ERROR, False);
       Exit;
     end;
 
+    {CI runs the update code with empty values}
+    Debug('Driver not selected, using empty driver');
   end;
 
   {Set last driver}
@@ -617,7 +618,7 @@ begin
   begin
 
     {Install driver and update config}
-    if not InstallDriver(Driver, Config) then
+    if not InstallDriver(Config.Device, Driver, Config) then
     begin
       SetUpdateRec(Config, Driver, UPDATE_ERROR, SameDriver);
       Exit;
@@ -630,14 +631,16 @@ begin
       Exit;
     end;
 
+    {Remove any legacy drivers not registered to a device}
+    RemoveLegacyDrivers(Config);
+
   end;
 
-  RemoveLegacyDrivers(Config);
   SetUpdateRec(Config, Driver, UPDATE_SUCCESS, SameDriver);
 
 end;
 
-function InstallDriver(Driver: TDriverRec; var Config: TConfigRec): Boolean;
+function InstallDriver(Device: TDeviceRec; Driver: TDriverRec; var Config: TConfigRec): Boolean;
 var
   InfPath: String;
 
@@ -656,7 +659,7 @@ begin
       Exit;
   end;
 
-  if not ExecUpdater(Config.Device.HardwareId, InfPath) then
+  if not ExecUpdater(Device.HardwareId, InfPath) then
   begin
     DebugDriver('Failed to install driver', Driver);
     Exit;
@@ -762,7 +765,12 @@ begin
   CurrentDriver := Config.Device.Driver;
   TestDevice := Config.Device;
 
+  {Bail out here so main procedure can handle it}
   if DeviceNotRecognized(TestDevice) then
+    Exit;
+
+  {No need to check anything if there is nothing to install}
+  if IsSameVersion(Driver, CurrentDriver) then
     Exit;
 
   {Return if the current driver is one that reports unrecognized chips}
@@ -783,7 +791,7 @@ begin
 
   DebugDriver('Selected driver does not report unrecognized chips', Driver);
 
-  {Find the most recent driver to test}
+  {We need to test the chip so find the most recent driver to use}
   TestDriver := Config.Packages[0];
   PackedVersion := Config.Packages[0].PackedVersion;
 
@@ -800,7 +808,7 @@ begin
   end;
 
   {Note that if we have an empty driver, installation will fail}
-  if not InstallDriver(TestDriver, TestConfig) then
+  if not InstallDriver(TestDevice, TestDriver, TestConfig) then
   begin
     Result := False;
     Exit;
@@ -814,19 +822,6 @@ begin
   begin
     Config := TestConfig;
     Exit;
-  end;
-
-  {Put everything back if the driver is the same as the
-  current driver as this doesn't get installed}
-  if IsSameVersion(Driver, CurrentDriver) then
-  begin
-
-    if not InstallDriver(CurrentDriver, TestConfig) then
-    begin
-      Result := False;
-      Exit;
-    end;
-
   end;
 
 end;
@@ -1471,9 +1466,15 @@ begin
 end;
 
 function StatusPageGetError(Config: TConfigRec; Update: TUpdateRec): String;
+var
+  ErrorText: String;
+
 begin
 
   Result := '';
+
+  ErrorText := 'Please reconnect your device, then click Back to retry. If this fails,';
+  AddText(ErrorText, 'use Windows Device Manager to find a PL2303 driver.');
 
   {Multi devices}
   if MultiDevice(Config) then
@@ -1505,18 +1506,14 @@ begin
     if Config.Packages[0].Exists then
       Result := 'Please click Back and select a driver.'
     else
-    begin
-      Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-      AddText(Result, 'use Windows Device Manager to find a PL2303 driver.');
-    end;
+      Result := ErrorText;
 
     Exit;
 
   end;
 
   {The update itself failed}
-  Result := 'Please reconnect your device, then click Back to retry. If this fails,';
-  AddText(Result, 'you may need to restart your computer and run this program again.');
+  Result := ErrorText;
 
 end;
 

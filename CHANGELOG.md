@@ -1,4 +1,5 @@
 ## [Unreleased]
+  * Fixed: Error when installing the same legacy driver.
 
 ## [1.0.0] - 2022-05-27
   * Added: Option to remove legacy drivers when uninstalling the program.
