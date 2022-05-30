@@ -1,2 +1,3 @@
 ; Update this only when creating a new release
-#define AppVersion "1.0.0"
+; Only major and minor versions are used for releases
+#define AppVersion "1.1.0"
