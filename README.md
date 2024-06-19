@@ -6,7 +6,7 @@
 [![GitHub releases](https://img.shields.io/github/downloads/johnstevenson/pl2303-legacy/total?color=coral)](https://github.com/johnstevenson/pl2303-legacy/releases/)
 
 - For authentic Prolific PL2303 HXA/XA and TA/TB microchips
-- Supports Windows 10 (x86, x64), from version 1903 (May 2019 update)
+- Supports Windows 10 (x86, x64), from version 2004 (May 2020 update, build 19041)
 - Supports Windows 11 (x64)
 
 ![Screenshot](screenshot.png)

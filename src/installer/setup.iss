@@ -25,7 +25,7 @@ SolidCompression=yes
 ; runtime directives
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
-MinVersion=10.0.18362
+MinVersion=10.0.19041
 DisableWelcomePage=yes
 DisableProgramGroupPage=yes
 DefaultDirName={autopf}\{#AppName}
