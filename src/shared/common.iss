@@ -21,7 +21,7 @@ type
     OemInf        : String;         {The Driver Name value}
     Driver        : TDriverRec;     {The installed driver for the device}
     Drivers       : TPLDrivers;     {Values from Matching Driver lines}
-    Text          : TArrayOfString; {Temporary fied to store lines while processing}
+    Text          : TArrayOfString; {Temporary field to store lines while processing}
   end;
 
   TPLInstances = record
@@ -68,7 +68,7 @@ function GetDriverDateAndVersion(Data: String; var DriverRec: TDriverRec): Boole
 function IsSameVersion(Driver1, Driver2: TDriverRec): Boolean; forward;
 
 {Exec functions}
-function ExecPnp(Params: String): Boolean; forward;
+function ExecPnp(EscapedParams: String): Boolean; forward;
 function ExecPnpDeleteDriver(Driver: TDriverRec; Uninstall: Boolean): Boolean; forward;
 function ExecPnpEnumDevices(Connected: Boolean; var Output: TArrayOfString): Boolean; forward;
 
@@ -77,7 +77,7 @@ procedure AddText(var Existing: String; Value: String); forward;
 procedure AddTo(var Existing: String; Separator, Value: String); forward;
 procedure AddToArray(var StrArray: TArrayOfString; Value: String); forward;
 procedure Debug(Message: String); forward;
-procedure DebugExecBegin(Exe, Params: String); forward;
+procedure DebugExecBegin(Exe, EscapedParams: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 function IsEmpty(const Value: String): Boolean; forward;
 function NotEmpty(const Value: String): Boolean; forward;
@@ -395,14 +395,14 @@ end;
 
 {*************** Exec functions ***************}
 
-function ExecPnp(Params: String): Boolean;
+function ExecPnp(EscapedParams: String): Boolean;
 var
   ExitCode: Integer;
 
 begin
 
-  DebugExecBegin(GBase.PnpExe, Params);
-  Result := Exec(GBase.PnpExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecBegin(GBase.PnpExe, EscapedParams);
+  Result := Exec(GBase.PnpExe, EscapedParams, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
   DebugExecEnd(Result, ExitCode);
   Result := Result and (ExitCode = 0);
 
@@ -414,8 +414,7 @@ var
 
 begin
 
-  AddText(Params, '/delete-driver');
-  AddText(Params, Driver.OemInf);
+  Params := Format('/delete-driver %s', [ArgWin(Driver.OemInf)]);
 
   if Uninstall then
     AddText(Params, '/uninstall /force');
@@ -435,10 +434,7 @@ begin
   SetArrayLength(Output, 0);
   DeleteFile(GBase.StdOut);
 
-  AddText(PnpParams, '/enum-devices');
-  AddText(PnpParams, '/class');
-  AddText(PnpParams, PORTSCLASS);
-  AddText(PnpParams, '/drivers');
+  PnpParams := Format('/enum-devices /class %s /drivers', [PORTSCLASS]);
 
   if Connected then
     AddText(PnpParams, '/connected');
@@ -495,10 +491,10 @@ begin
   Log('$ ' + Message);
 end;
 
-procedure DebugExecBegin(Exe, Params: String);
+procedure DebugExecBegin(Exe, EscapedParams: String);
 begin
   Debug('-- Execute File --');
-  Debug(Format('Running %s %s', [ArgWin(Exe), Params]));
+  Debug(Format('Running %s %s', [Exe, EscapedParams]));
 end;
 
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer);

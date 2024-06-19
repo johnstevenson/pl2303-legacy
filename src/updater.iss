@@ -22,7 +22,8 @@ SolidCompression=yes
 
 ; runtime directives
 PrivilegesRequired=admin
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64os or x86os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.19041
 DisableWelcomePage=yes
 DisableDirPage=yes
@@ -420,7 +421,7 @@ var
 
 begin
 
-  Debug('Seaching for a connected PL2303 device');
+  Debug('Searching for a connected PL2303 device');
 
   if not ExecPnpEnumDevices(True, Output) then
     Exit;
@@ -1163,8 +1164,7 @@ var
 
 begin
 
-  Params := ArgWin(HardwareId);
-  AddText(Params, ArgWin(InfPath));
+  Params := Format('%s %s', [ArgWin(HardwareId), ArgWin(InfPath)]);
 
   DebugExecBegin(GUpdaterExe, Params);
   Result := Exec(GUpdaterExe, Params, GBase.TmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);

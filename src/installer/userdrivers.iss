@@ -131,7 +131,7 @@ var
 
 begin
 
-  Debug('Seaching for installed PL2303 drivers');
+  Debug('Searching for installed PL2303 drivers');
 
   if not ExecPnpEnumDevices(False, Output) then
     Exit;

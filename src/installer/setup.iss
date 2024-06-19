@@ -24,7 +24,8 @@ SolidCompression=yes
 
 ; runtime directives
 PrivilegesRequired=admin
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64os or x86os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.19041
 DisableWelcomePage=yes
 DisableProgramGroupPage=yes
@@ -199,7 +200,7 @@ var
 
 begin
 
-  Exec(ArgWin(GAppExe), '', '', SW_SHOW, ewWaitUntilTerminated, ExitCode);
+  Exec(GAppExe, '', '', SW_SHOW, ewWaitUntilTerminated, ExitCode);
   GStartPage.Info.Visible := True;
 
 end;
